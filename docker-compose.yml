@@ -1,0 +1,32 @@
+# 说明：真实模型推理镜像需要 NVIDIA Container Toolkit 与 CUDA 基础镜像，
+# 这里给出的是"接口层"编排，默认以 Mock 模式运行，方便快速体验与二次开发。
+services:
+  backend:
+    build: ./backend
+    container_name: cosyvoice-backend
+    ports:
+      - "8000:8000"
+    environment:
+      CV_HOST: 0.0.0.0
+      CV_PORT: "8000"
+      CV_MOCK: "true"
+      CV_DATA_DIR: /data
+      CV_CORS_ORIGINS: '["http://localhost:8080","http://127.0.0.1:8080"]'
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+
+  frontend:
+    image: node:22-alpine
+    container_name: cosyvoice-frontend
+    working_dir: /app
+    command: sh -c "npm install && npm run build && npx vite preview --host 0.0.0.0 --port 8080"
+    ports:
+      - "8080:8080"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - backend
+    restart: unless-stopped

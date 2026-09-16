@@ -1,0 +1,31 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Node ---
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# --- Project runtime data ---
+data/
+logs/
+backend/.env
+frontend/.env.local
+frontend/.env
+
+# --- CosyVoice upstream checkout (cloned by scripts/setup_cosyvoice.sh) ---
+CosyVoice/
+pretrained_models/
+
+# --- Editors / OS ---
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,21 @@
+[project]
+name = "cosyvoice-web-backend"
+version = "1.0.0"
+description = "CosyVoice 语音合成 Web 后端 (FastAPI)"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["B008"]  # FastAPI 依赖注入大量使用函数调用作为默认值
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
