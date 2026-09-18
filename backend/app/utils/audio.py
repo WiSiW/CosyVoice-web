@@ -1,7 +1,7 @@
 """音频读写工具。
 
-这里刻意只依赖标准库 ``wave`` + ``numpy`` + 可选的 ``soundfile``，
-以便在 Mock 模式（不安装 torch）下也能正常校验与播放音频。
+这里刻意只依赖标准库 ``wave`` + ``numpy`` + ``soundfile``，
+不引入 torch，避免 Web 层被推理依赖绑死。
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ def probe_audio(path: str | Path) -> AudioInfo:
 
 def _probe_with_soundfile(path: Path) -> AudioInfo | None:
     try:
-        import soundfile as sf  # 延迟导入，Mock 模式下允许缺失
+        import soundfile as sf  # 延迟导入，便于在缺依赖时给出更好的回退
     except Exception:  # pragma: no cover - 环境相关
         return None
     try:

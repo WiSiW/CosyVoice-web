@@ -29,12 +29,12 @@ export type ModeField =
 export interface ModelStatus {
   state: ModelState
   kind: string | null
+  device: 'cpu' | 'cuda' | string
   family: string | null
   sample_rate: number | null
   note: string | null
   model_dir: string
   model_source: string
-  mock: boolean
   error: string | null
   loaded_at: string | null
   load_seconds: number | null

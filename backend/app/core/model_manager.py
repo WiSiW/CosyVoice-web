@@ -2,10 +2,12 @@
 
 对外只暴露一个 :class:`ModelManager`，负责：
 
-* 懒加载 / 手动加载 / 卸载真实模型；
-* 在缺少依赖或显式开启 Mock 时自动降级为 :class:`MockBackend`；
+* 懒加载 / 手动加载 / 卸载模型；
 * 记录运行状态供 ``/system/info`` 返回；
 * 串行化推理调用（上游 model.tts 不是线程安全的）。
+
+本模块**没有任何模拟推理路径**：模型加载失败时状态置为 ``error`` 并保留原因，
+调用方（HTTP 层）据此返回明确错误，绝不会退回"假音频"。
 """
 
 from __future__ import annotations
@@ -19,7 +21,6 @@ from typing import Any, Iterator
 
 from app.config import Settings
 from app.core.errors import ModelNotReadyError
-from app.core.mock_backend import MockBackend
 from app.core.types import SynthParams
 from app.services.modes import mode_specs_payload
 
@@ -71,17 +72,26 @@ class ModelManager:
             return "模型正在加载中，请稍候重试"
         return "模型尚未加载，请先调用 POST /api/v1/system/load"
 
+    @staticmethod
+    def _detect_device() -> str:
+        try:
+            import torch
+
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        except Exception:
+            return "cpu"
+
     def status(self) -> dict[str, Any]:
         backend = self._backend
         return {
             "state": self._state,
             "kind": getattr(backend, "kind", None),
+            "device": self._detect_device(),
             "family": getattr(backend, "family", None),
             "sample_rate": getattr(backend, "sample_rate", None),
             "note": getattr(backend, "note", None),
-            "model_dir": self._settings.model_dir,
+            "model_dir": self._settings.resolved_model_dir,
             "model_source": self._settings.model_source,
-            "mock": self._state == "ready" and getattr(backend, "kind", None) == "mock",
             "error": self._error,
             "loaded_at": self._loaded_at,
             "load_seconds": self._load_seconds,
@@ -90,11 +100,12 @@ class ModelManager:
 
     def modes_payload(self) -> list[dict]:
         if not self.is_ready:
-            return mode_specs_payload(None)
-        backend = self._backend
-        # Mock 后端不区分配置，所有模式都按可用返回，方便前端联调
-        family = None if getattr(backend, "kind", None) == "mock" else getattr(backend, "family", None)
-        return mode_specs_payload(family)
+            # 模型未加载：音色列表未知，不做可用性推断
+            return mode_specs_payload(None, speakers=None)
+        return mode_specs_payload(
+            getattr(self._backend, "family", None),
+            speakers=self.list_speakers(),
+        )
 
     # ------------------------------------------------------------ 加载控制
     def load(self, *, force: bool = False) -> dict[str, Any]:
@@ -144,33 +155,32 @@ class ModelManager:
         """确保模型可用；未加载时按需加载。"""
         if self.is_ready:
             return self._backend
-        if self._state in ("unloaded", "error"):
-            self.load(force=self._state == "error")
+        # 已经失败过就不要在每次请求里反复重试（可能很慢甚至触发下载），
+        # 直接把错误原因返回给调用方，由用户显式点击"加载模型"重试。
+        if self._state == "error":
+            raise ModelNotReadyError(self._not_ready_message())
+        if self._state == "unloaded":
+            self.load()
         return self.backend
 
     # ------------------------------------------------------------ 构造后端
     def _build_backend(self):
+        """构建真实推理后端。
+
+        这里不捕获异常：加载失败必须让调用方看到真实原因，
+        由 :meth:`load` 统一记录为 ``error`` 状态。
+        """
         settings = self._settings
-        if settings.mock:
-            logger.warning("CV_MOCK=true，使用 Mock 后端（不加载真实模型）")
-            return MockBackend()
+        from app.core.cosyvoice_backend import CosyVoiceBackend
 
-        try:
-            from app.core.cosyvoice_backend import CosyVoiceBackend
-
-            return CosyVoiceBackend(
-                repo_dir=settings.resolved_cosyvoice_repo,
-                model_dir=settings.model_dir,
-                load_jit=settings.load_jit,
-                load_trt=settings.load_trt,
-                load_vllm=settings.load_vllm,
-                fp16=settings.fp16,
-            )
-        except Exception as exc:
-            if settings.mock:
-                raise
-            logger.error("真实模型加载失败，自动降级为 Mock 后端: %s", exc)
-            return MockBackend(note=f"真实模型不可用，已降级: {exc}")
+        return CosyVoiceBackend(
+            repo_dir=settings.resolved_cosyvoice_repo,
+            model_dir=settings.resolved_model_dir,
+            load_jit=settings.load_jit,
+            load_trt=settings.load_trt,
+            load_vllm=settings.load_vllm,
+            fp16=settings.fp16,
+        )
 
     # ------------------------------------------------------------ 推理串行化
     @contextmanager

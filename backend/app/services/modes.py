@@ -69,11 +69,28 @@ FIELD_LABELS: dict[str, str] = {
 }
 
 
-def mode_specs_payload(family: str | None = None) -> list[dict]:
-    """返回给前端的模式列表，附带当前模型下的可用性。"""
+NO_PRESET_SPEAKER_NOTE = (
+    "当前模型没有内置预训练音色（spk2info 为空）。"
+    "CosyVoice2 / CosyVoice3 系列都没有预置音色，请改用「3s 极速复刻」上传一段参考音频，"
+    "或换成 iic/CosyVoice-300M-SFT 模型。"
+)
+
+
+def mode_specs_payload(family: str | None = None, speakers: list[str] | None = None) -> list[dict]:
+    """返回给前端的模式列表，附带当前模型下的可用性。
+
+    ``speakers`` 为 ``None`` 表示"模型尚未加载、音色列表未知"，
+    此时不做预训练音色的可用性判断，避免误禁用。
+    """
     payload: list[dict] = []
     for spec in MODE_SPECS.values():
         available = spec.required_family is None or spec.required_family == family
+        note = spec.note
+
+        if spec.id == "sft" and speakers is not None and not speakers:
+            available = False
+            note = NO_PRESET_SPEAKER_NOTE
+
         payload.append(
             {
                 "id": spec.id,
@@ -84,7 +101,7 @@ def mode_specs_payload(family: str | None = None) -> list[dict]:
                 "supports_stream": spec.supports_stream,
                 "supports_speed": spec.supports_speed,
                 "required_family": spec.required_family,
-                "note": spec.note,
+                "note": note,
                 "available": available,
             }
         )

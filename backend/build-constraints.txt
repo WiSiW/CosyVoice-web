@@ -1,0 +1,14 @@
+# 构建隔离环境（PEP 517）使用的依赖约束。
+#
+# 为什么要它：setuptools >= 81 移除了 pkg_resources，而 openai-whisper
+# （只有 sdist，必须现场构建）的 setup.py 仍然 import pkg_resources，
+# 不加约束会直接构建失败：
+#   ModuleNotFoundError: No module named 'pkg_resources'
+#
+# 用法（pip >= 25.1）：
+#   pip install --build-constraint build-constraints.txt -r requirements-cosyvoice.txt
+#
+# 注意：环境变量 PIP_CONSTRAINT 对构建隔离环境**不生效**，必须用 --build-constraint，
+# 或者改用 --no-build-isolation。
+setuptools<81
+wheel

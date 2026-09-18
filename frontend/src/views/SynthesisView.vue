@@ -257,7 +257,7 @@ async function refreshVoices(): Promise<void> {
       <h1>语音合成</h1>
       <p>
         支持预训练音色、3s 极速复刻、跨语种复刻与自然语言控制。当前
-        <strong>{{ system.model?.mock ? 'Mock 后端（示例音频）' : system.model?.family || '模型未加载' }}</strong>
+        <strong>{{ system.model?.family || '模型未加载' }}</strong>
       </p>
     </div>
     <div class="inline">
@@ -269,6 +269,15 @@ async function refreshVoices(): Promise<void> {
     <section>
       <div class="card">
         <ModeTabs v-model="form.mode" :modes="system.modes" />
+
+        <div v-if="system.model?.state === 'ready' && system.model.device === 'cpu'" class="alert info">
+          <strong>当前为 CPU 推理，速度约为实时的 1/50 ~ 1/100。</strong>
+          <div class="alert-detail">
+            实测（i7-7700HQ / CosyVoice2-0.5B）：3 秒语音约需 5 分钟。
+            建议：① 关闭下方「流式合成」（CPU 上非流式反而更快）；② 每次只合成一两句短文本；
+            ③ 对性能有要求时改用 NVIDIA GPU 机器（本机 CPU 上 RTF ≈ 100）。
+          </div>
+        </div>
 
         <div v-if="system.model && system.model.state !== 'ready'" class="alert warning">
           <template v-if="system.model.state === 'loading'">模型正在加载中，请稍候…</template>
@@ -464,6 +473,14 @@ async function refreshVoices(): Promise<void> {
 </template>
 
 <style scoped>
+.alert-detail {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  word-break: break-word;
+  opacity: 0.92;
+}
+
 .mode-desc {
   margin: 14px 0 18px;
   font-size: 13px;

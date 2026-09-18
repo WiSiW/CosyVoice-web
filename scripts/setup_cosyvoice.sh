@@ -27,21 +27,28 @@ fi
 echo "==> 同步子模块 (third_party/Matcha-TTS 为推理必需依赖)"
 git -C "${COSYVOICE_DIR}" submodule update --init --recursive
 
-echo "==> 安装 CosyVoice 运行依赖"
-if [[ -x "${PROJECT_ROOT}/backend/.venv/bin/pip" ]]; then
-  PIP="${PROJECT_ROOT}/backend/.venv/bin/pip"
-else
-  PIP="${PYTHON} -m pip"
-fi
-# shellcheck disable=SC2086
-${PIP} install -r "${COSYVOICE_DIR}/requirements.txt"
+echo "==> 安装 CosyVoice 推理依赖（自动处理平台差异）"
+# 说明：不要直接 pip install -r CosyVoice/requirements.txt
+#   * openai-whisper 只有 sdist，新版 setuptools 移除了 pkg_resources，会构建失败
+#   * Intel Mac 上 torch==2.3.1 没有轮子（最后可用版本为 2.2.2）
+# scripts/install_cosyvoice_deps.sh 已处理以上问题。
+bash "${PROJECT_ROOT}/scripts/install_cosyvoice_deps.sh"
 
 echo "==> 下载模型权重: ${MODEL_ID}"
 TARGET_DIR="${COSYVOICE_DIR}/pretrained_models/$(basename "${MODEL_ID}")"
 "${PYTHON}" - <<PY
+from pathlib import Path
 from modelscope import snapshot_download
-path = snapshot_download("${MODEL_ID}", local_dir="${TARGET_DIR}")
+path = Path(snapshot_download("${MODEL_ID}", local_dir="${TARGET_DIR}"))
 print("模型已下载到:", path)
+
+yaml_files = list(path.glob("cosyvoice*.yaml"))
+if not yaml_files:
+    raise SystemExit(f"[错误] {path} 下没有 cosyvoice*.yaml，权重可能不完整，请重新下载")
+missing = [name for name in ("llm.pt", "flow.pt", "hift.pt") if not (path / name).exists()]
+if missing:
+    raise SystemExit(f"[错误] 模型文件缺失: {', '.join(missing)}，请重新下载")
+print("权重校验通过:", ", ".join(f.name for f in yaml_files))
 PY
 
 cat <<MSG

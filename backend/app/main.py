@@ -3,7 +3,6 @@
 启动方式::
 
     uvicorn app.main:app --reload --port 8000     # 开发
-    python -m app.main --mock                     # 无模型联调
     python -m app.main --model-dir iic/CosyVoice2-0.5B
 """
 
@@ -41,7 +40,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         logger = logging.getLogger("app")
         logger.info("%s v%s 启动", settings.app_name, settings.app_version)
-        logger.info("模型目录: %s (mock=%s)", settings.model_dir, settings.mock)
+        logger.info("模型目录: %s", settings.resolved_model_dir)
         if settings.preload_model:
             await run_in_threadpool(manager.load)
             if manager.is_ready:
@@ -98,8 +97,6 @@ app = create_app()
 
 
 def _apply_cli_overrides(args: argparse.Namespace) -> None:
-    if args.mock:
-        os.environ["CV_MOCK"] = "true"
     if args.model_dir:
         os.environ["CV_MODEL_DIR"] = args.model_dir
     if args.repo:
@@ -115,7 +112,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=None)
     parser.add_argument("--model-dir", default=None, help="本地模型目录或 ModelScope repo id")
     parser.add_argument("--repo", default=None, help="CosyVoice 仓库路径")
-    parser.add_argument("--mock", action="store_true", help="使用 Mock 后端，无需模型权重")
     parser.add_argument("--preload", action="store_true", help="启动时立即加载模型")
     parser.add_argument("--reload", action="store_true", help="开发模式热重载")
     return parser.parse_args(argv)

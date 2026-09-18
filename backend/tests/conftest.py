@@ -9,7 +9,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
+from app.core.model_manager import ModelManager
 from app.main import create_app
+from tests.stub_backend import StubBackend
 
 
 def make_wav_bytes(seconds: float = 3.0, sample_rate: int = 16000, freq: float = 220.0) -> bytes:
@@ -28,7 +30,6 @@ def make_wav_bytes(seconds: float = 3.0, sample_rate: int = 16000, freq: float =
 @pytest.fixture()
 def settings(tmp_path: Path) -> Settings:
     return Settings(
-        mock=True,
         data_dir=tmp_path / "data",
         cosyvoice_repo=tmp_path / "CosyVoice",
         log_level="WARNING",
@@ -36,7 +37,12 @@ def settings(tmp_path: Path) -> Settings:
 
 
 @pytest.fixture()
-def client(settings: Settings):
+def client(settings: Settings, monkeypatch: pytest.MonkeyPatch):
+    """注入测试桩后端，使 HTTP 层无需 GPU 与模型权重即可被覆盖。
+
+    应用本身没有任何模拟推理路径，这里替换的是 ModelManager 的内部工厂方法。
+    """
+    monkeypatch.setattr(ModelManager, "_build_backend", lambda self: StubBackend())
     app = create_app(settings)
     with TestClient(app) as test_client:
         yield test_client

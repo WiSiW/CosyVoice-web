@@ -3,7 +3,7 @@ PY ?= python3
 BACKEND_DIR := backend
 FRONTEND_DIR := frontend
 
-.PHONY: help setup setup-backend setup-frontend model mock dev api web build test clean
+.PHONY: help setup setup-backend setup-frontend deps model dev api web build test clean
 
 help: ## 显示所有可用命令
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -16,11 +16,11 @@ setup-backend: ## 创建 Python 虚拟环境并安装后端依赖
 setup-frontend: ## 安装前端依赖
 	cd $(FRONTEND_DIR) && npm install
 
+deps: ## 安装后端 + CosyVoice 推理依赖（自动处理 macOS / Intel 等平台差异）
+	bash scripts/install_cosyvoice_deps.sh
+
 model: ## 克隆 CosyVoice 并下载默认模型权重
 	bash scripts/setup_cosyvoice.sh
-
-mock: ## 以 Mock 模式启动后端（无需 GPU / 模型权重）
-	cd $(BACKEND_DIR) && CV_MOCK=true .venv/bin/uvicorn app.main:app --reload --port 8000
 
 api: ## 启动后端
 	cd $(BACKEND_DIR) && .venv/bin/uvicorn app.main:app --reload --port 8000

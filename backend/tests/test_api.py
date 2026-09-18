@@ -1,4 +1,4 @@
-"""基于 Mock 后端的端到端接口测试。"""
+"""HTTP 层端到端接口测试（使用 tests/stub_backend.py 的测试桩）。"""
 
 from __future__ import annotations
 
@@ -15,11 +15,12 @@ def test_health(client):
     assert resp.json()["status"] == "ok"
 
 
-def test_system_info_triggers_mock_backend(client):
+def test_system_info_reports_model_state(client):
     resp = client.get("/api/v1/system/info")
     assert resp.status_code == 200
     body = resp.json()
     assert body["model"]["state"] in {"unloaded", "ready"}
+    assert body["model"]["family"] == "CosyVoice2"
     modes = client.get("/api/v1/system/modes").json()
     assert {mode["id"] for mode in modes} >= {"sft", "zero_shot", "cross_lingual", "instruct2"}
 

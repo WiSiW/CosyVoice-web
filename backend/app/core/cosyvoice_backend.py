@@ -29,8 +29,6 @@ from app.services.modes import MODE_SPECS, get_spec
 
 logger = logging.getLogger("app.model")
 
-PROMPT_SAMPLE_RATE = 16000
-
 
 class CosyVoiceBackend:
     """真实模型后端。"""
@@ -49,6 +47,10 @@ class CosyVoiceBackend:
         trt_concurrent: int = 1,
     ) -> None:
         self.repo_dir = repo_dir
+        # 注意顺序：必须在 _prepare_sys_path() 之前解析模型路径。
+        # 该方法会 chdir 到上游仓库目录，之后相对路径就不可靠了。
+        model_path = self._resolve_model_path(model_dir)
+
         self._prepare_sys_path(repo_dir)
 
         try:
@@ -60,7 +62,6 @@ class CosyVoiceBackend:
                 f" 原始错误: {exc}"
             ) from exc
 
-        model_path = self._resolve_model_path(model_dir)
         model_cls = self._detect_model_class(model_path, CosyVoice, CosyVoice2, CosyVoice3)
 
         kwargs: dict[str, Any] = {
@@ -99,12 +100,43 @@ class CosyVoiceBackend:
 
     @staticmethod
     def _resolve_model_path(model_dir: str) -> Path:
-        if os.path.exists(model_dir):
-            return Path(model_dir).resolve()
+        """返回模型目录的绝对路径。
+
+        ``model_dir`` 已经过 ``Settings.resolved_model_dir`` 规范化：
+        要么是绝对路径，要么是 ModelScope 仓库 id。
+        """
+        path = Path(model_dir).expanduser()
+
+        if path.exists():
+            if not (path / "cosyvoice.yaml").exists() and not list(path.glob("cosyvoice*.yaml")):
+                raise RuntimeError(
+                    f"模型目录 {path} 存在，但没有找到 cosyvoice*.yaml 配置文件，"
+                    "可能权重没有下载完整。请重新执行 `bash scripts/setup_cosyvoice.sh`。"
+                )
+            return path.resolve()
+
+        # 绝对路径但不存在 —— 说明权重根本没下载，不要当成仓库 id 去 snapshot_download，
+        # 否则 ModelScope 会抛出一堆看不懂的错误（历史上就踩过这个坑）。
+        if path.is_absolute():
+            raise RuntimeError(
+                f"本地模型目录不存在: {path}\n"
+                "请任选一种方式修复：\n"
+                "  1) 下载官方权重（推荐）: bash scripts/setup_cosyvoice.sh\n"
+                "  2) 在 backend/.env 中把 CV_MODEL_DIR 指向已有的权重目录\n"
+                "  3) 改成 ModelScope 仓库 id，例如 CV_MODEL_DIR=iic/CosyVoice2-0.5B（首次启动会自动下载）"
+            )
+
         from modelscope import snapshot_download  # 延迟导入
 
         logger.info("本地未找到模型，从 ModelScope 下载: %s", model_dir)
-        return Path(snapshot_download(model_dir))
+        try:
+            downloaded = snapshot_download(model_dir)
+        except Exception as exc:
+            raise RuntimeError(
+                f"从 ModelScope 下载模型 {model_dir} 失败: {exc}\n"
+                "请检查网络，或改用本地权重目录（CV_MODEL_DIR=/abs/path/to/model）。"
+            ) from exc
+        return Path(downloaded).resolve()
 
     @staticmethod
     def _detect_model_class(
@@ -133,14 +165,17 @@ class CosyVoiceBackend:
         spec = MODE_SPECS.get(mode)
         if spec is None:
             return False
-        if spec.required_family is None:
-            return True
-        return spec.required_family == self.family
+        if spec.required_family is not None and spec.required_family != self.family:
+            return False
+        # 预训练音色需要模型自带 spk2info（CosyVoice2/3 的 spk2info 为空），
+        # 否则 frontend_sft 会直接 KeyError。这里提前拦下并给出可读错误。
+        if mode == "sft" and not self.list_speakers():
+            return False
+        return True
 
     # ------------------------------------------------------------ 音色注册
     def add_zero_shot_speaker(self, prompt_text: str, prompt_wav_path: str, spk_id: str) -> bool:
-        speech = self._load_prompt(prompt_wav_path)
-        return bool(self._model.add_zero_shot_spk(prompt_text, speech, spk_id))
+        return bool(self._model.add_zero_shot_spk(prompt_text, self._prompt_path(prompt_wav_path), spk_id))
 
     def remove_speaker(self, spk_id: str) -> None:
         spk2info = getattr(self._model.frontend, "spk2info", None)
@@ -176,14 +211,14 @@ class CosyVoiceBackend:
             generator = model.inference_zero_shot(
                 params.tts_text,
                 params.prompt_text,
-                self._load_prompt(params.prompt_wav_path),
+                self._prompt_path(params.prompt_wav_path),
                 zero_shot_spk_id=params.zero_shot_spk_id,
                 **common,
             )
         elif params.mode == "cross_lingual":
             generator = model.inference_cross_lingual(
                 params.tts_text,
-                self._load_prompt(params.prompt_wav_path),
+                self._prompt_path(params.prompt_wav_path),
                 zero_shot_spk_id=params.zero_shot_spk_id,
                 **common,
             )
@@ -191,7 +226,7 @@ class CosyVoiceBackend:
             generator = model.inference_instruct2(
                 params.tts_text,
                 params.instruct_text,
-                self._load_prompt(params.prompt_wav_path),
+                self._prompt_path(params.prompt_wav_path),
                 zero_shot_spk_id=params.zero_shot_spk_id,
                 **common,
             )
@@ -201,7 +236,7 @@ class CosyVoiceBackend:
             )
         elif params.mode == "vc":
             generator = model.inference_vc(
-                self._load_prompt(params.source_wav_path), self._load_prompt(params.prompt_wav_path)
+                self._prompt_path(params.source_wav_path), self._prompt_path(params.prompt_wav_path)
             )
         else:  # pragma: no cover - 由 get_spec 兜底
             raise UnsupportedModeError(f"未实现的模式: {params.mode}")
@@ -211,12 +246,23 @@ class CosyVoiceBackend:
             yield self._to_numpy(speech)
 
     # ---------------------------------------------------------------- 工具
-    def _load_prompt(self, path: str | None):
+    @staticmethod
+    def _prompt_path(path: str | None) -> str:
+        """校验并返回参考音频的**文件路径**。
+
+        注意：这里必须传路径，不能像旧版那样先用 ``load_wav`` 读成 tensor 再传。
+        当前上游的 ``CosyVoiceFrontEnd`` 会在 ``_extract_speech_feat``(24kHz)、
+        ``_extract_speech_token``(16kHz)、``_extract_spk_embedding``(16kHz)
+        里各自按不同目标采样率重新调用一次 ``load_wav()``，
+        传 tensor 进去会直接抛 ``TypeError: Invalid file: tensor(...)``。
+        （上游 ``runtime/python/fastapi/server.py`` 还是旧写法，不要照抄。）
+        """
         if not path:
             raise UnsupportedModeError("缺少参考音频")
-        from cosyvoice.utils.file_utils import load_wav
-
-        return load_wav(path, PROMPT_SAMPLE_RATE)
+        prompt = Path(path).expanduser()
+        if not prompt.exists():
+            raise UnsupportedModeError(f"参考音频不存在: {prompt}")
+        return str(prompt)
 
     @staticmethod
     def _to_numpy(speech) -> np.ndarray:  # noqa: ANN001 - torch.Tensor

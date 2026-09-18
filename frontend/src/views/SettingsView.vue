@@ -179,10 +179,6 @@ async function unloadModel(): Promise<void> {
           <div><dt>等待队列</dt><dd>{{ model?.inference_queue ?? 0 }}</dd></div>
         </dl>
 
-        <div v-if="model?.mock" class="alert warning">
-          当前运行在 Mock 模式：不会加载真实权重，返回的是模拟音频。取消后端 <code class="mono">CV_MOCK=true</code>
-          并配置模型目录后即可使用真实推理。
-        </div>
         <div v-if="model?.error" class="alert error">{{ model.error }}</div>
 
         <div class="inline">
@@ -219,6 +215,13 @@ async function unloadModel(): Promise<void> {
 </template>
 
 <style scoped>
+.reason {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
 .switches {
   display: flex;
   flex-direction: column;

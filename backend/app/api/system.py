@@ -46,7 +46,7 @@ def system_info(
 
 @router.get("/system/modes", response_model=list[ModeOut], summary="可用合成模式")
 def list_modes(manager: ModelManager = Depends(manager_dep)) -> list[ModeOut]:
-    payload = manager.modes_payload() if manager.is_ready else mode_specs_payload(None)
+    payload = manager.modes_payload()
     return [ModeOut(**item) for item in payload]
 
 

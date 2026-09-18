@@ -1,20 +1,46 @@
-# 说明：真实模型推理镜像需要 NVIDIA Container Toolkit 与 CUDA 基础镜像，
-# 这里给出的是"接口层"编排，默认以 Mock 模式运行，方便快速体验与二次开发。
+# ===========================================================================
+# 本地/服务器编排
+#
+# ⚠️ 后端没有任何模拟推理路径：如果模型权重没准备好，容器会以 state=error 启动，
+#    并通过 /api/v1/system/info 返回明确原因。
+#
+# 使用前请先准备好权重：
+#   bash scripts/setup_cosyvoice.sh
+#
+# 真实 GPU 推理需要 NVIDIA Container Toolkit，请把 backend 的镜像换成 CUDA 基础镜像
+# 并安装 torch（见 backend/Dockerfile 顶部说明）。
+# ===========================================================================
 services:
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        # 置为 true 会在镜像内安装 torch 等推理依赖（体积大、构建慢）
+        INSTALL_INFERENCE_DEPS: "false"
     container_name: cosyvoice-backend
     ports:
       - "8000:8000"
     environment:
       CV_HOST: 0.0.0.0
       CV_PORT: "8000"
-      CV_MOCK: "true"
       CV_DATA_DIR: /data
+      CV_COSYVOICE_REPO: /opt/CosyVoice
+      CV_MODEL_DIR: /opt/CosyVoice/pretrained_models/CosyVoice2-0.5B
+      CV_PRELOAD_MODEL: "true"
       CV_CORS_ORIGINS: '["http://localhost:8080","http://127.0.0.1:8080"]'
     volumes:
+      # 只读挂载官方仓库与权重
+      - ./CosyVoice:/opt/CosyVoice:ro
       - ./data:/data
     restart: unless-stopped
+    # 需要 GPU 时取消注释并确保宿主机已安装 NVIDIA Container Toolkit
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
 
   frontend:
     image: node:22-alpine

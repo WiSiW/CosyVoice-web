@@ -23,12 +23,12 @@ class HealthOut(ApiModel):
 class ModelStatusOut(ApiModel):
     state: str
     kind: str | None = None
+    device: str = Field(default="cpu", description="cpu / cuda，用于前端提示推理性能")
     family: str | None = None
     sample_rate: int | None = None
     note: str | None = None
     model_dir: str
     model_source: str
-    mock: bool
     error: str | None = None
     loaded_at: str | None = None
     load_seconds: float | None = None

@@ -35,7 +35,7 @@
 | 流式合成 | 后端逐块输出 PCM，前端 Web Audio 边收边播，首包延迟显著降低 |
 | 音色库 | 参考音频 + 参考文本持久化管理，一键注册进推理运行时 |
 | 录音与转码 | 浏览器直接录音，自动转码为 16kHz 单声道 WAV 后上传 |
-| Mock 模式 | 无 GPU / 无权重也能跑通完整前后端链路，便于联调与二次开发 |
+| 失败即报错 | 模型加载失败会如实返回错误与原因，不存在任何"假音频"兜底路径 |
 
 ---
 
@@ -46,37 +46,23 @@
 * 真实推理需要：CUDA GPU（CPU 也可运行，但速度较慢）
 * 磁盘：模型权重约 1~3 GB
 
+> **macOS 用户注意**：Apple Silicon 与 Intel Mac 都只能走 CPU 推理；
+> Intel Mac 的 PyTorch 最高支持到 2.2.2。请使用 `bash scripts/install_cosyvoice_deps.sh`
+> 安装依赖，详见文末「依赖安装排错」。
+
 ---
 
 ## 快速开始
 
-### 方式一：Mock 模式（1 分钟跑通，无需模型）
-
-```bash
-# 1) 后端
-cd backend
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-CV_MOCK=true .venv/bin/uvicorn app.main:app --reload --port 8000
-
-# 2) 前端（另开一个终端）
-cd frontend
-npm install
-npm run dev
-```
-
-打开 <http://localhost:5173> 即可体验完整界面（音频为模拟音调）。
-
-### 方式二：接入真实模型
+### 方式一：接入模型并启动
 
 ```bash
 # 1) 克隆 CosyVoice 官方仓库 + 子模块 + 下载权重（默认 CosyVoice2-0.5B）
 bash scripts/setup_cosyvoice.sh
 
-# 2) 安装后端依赖
-cd backend
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/pip install -r ../CosyVoice/requirements.txt
+# 2) 安装后端依赖 + CosyVoice 推理依赖
+#    该脚本会自动处理平台差异（macOS/Intel 的 torch 版本、whisper 源码构建等）
+bash scripts/install_cosyvoice_deps.sh
 
 # 3) 配置（复制后按需修改）
 cp .env.example .env
@@ -99,11 +85,11 @@ MODEL_ID=FunAudioLLM/Fun-CosyVoice3-0.5B-2512 bash scripts/setup_cosyvoice.sh
 > 也可以在 `backend/.env` 中直接把 `CV_MODEL_DIR` 写成 ModelScope 仓库 id（如 `iic/CosyVoice2-0.5B`），
 > 后端启动时会自动 `snapshot_download` 下载权重。
 
-### 方式三：Makefile 快捷命令
+### 方式二：Makefile 快捷命令
 
 ```bash
-make setup        # 安装前后端依赖
-make mock         # Mock 模式启动后端
+make setup        # 安装前后端依赖（Web 层）
+make deps         # 安装后端 + CosyVoice 推理依赖
 make api          # 启动后端
 make web          # 启动前端
 make model        # 克隆 CosyVoice 并下载模型
@@ -125,14 +111,13 @@ cosyVoice-test/
 │   │   ├── api/                 # health / system / voices / tts 路由
 │   │   ├── core/
 │   │   │   ├── model_manager.py      # 模型生命周期 + 推理串行化
-│   │   │   ├── cosyvoice_backend.py  # 官方 AutoModel 封装
-│   │   │   └── mock_backend.py       # 无模型 Mock 后端
+│   │   │   └── cosyvoice_backend.py  # 官方 AutoModel 封装
 │   │   ├── services/
 │   │   │   ├── modes.py         # 合成模式元数据（前后端共用契约）
 │   │   │   ├── tts_service.py   # 参数校验 / 合成 / 落盘
 │   │   │   └── voice_store.py   # 自定义音色库（文件存储）
 │   │   └── utils/audio.py       # WAV 读写与校验
-│   ├── tests/                   # pytest 接口测试（Mock 后端，无需 GPU）
+│   ├── tests/                   # pytest 接口测试（HTTP 层用测试桩，无需 GPU）
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── frontend/                    # Vue 3 前端
@@ -198,7 +183,6 @@ X-Sample-Format: int16
 | `CV_COSYVOICE_REPO` | `../CosyVoice` | CosyVoice 官方仓库路径 |
 | `CV_MODEL_DIR` | `iic/CosyVoice2-0.5B` | 本地模型目录或 ModelScope 仓库 id |
 | `CV_PRELOAD_MODEL` | `false` | 启动时立即加载模型 |
-| `CV_MOCK` | `false` | 使用 Mock 后端 |
 | `CV_FP16` / `CV_LOAD_JIT` / `CV_LOAD_TRT` / `CV_LOAD_VLLM` | `false` | 推理加速开关（需 CUDA） |
 | `CV_DATA_DIR` | `../data` | 音色库与生成结果目录 |
 | `CV_MAX_UPLOAD_MB` | `30` | 参考音频大小上限 |
@@ -236,12 +220,117 @@ Web Audio API。
 把 `CV_MODEL_DIR` 指向 Fun-CosyVoice3 权重目录（或 ModelScope id）即可，后端会自动识别
 `cosyvoice3.yaml` 并切换对应的推理类。
 
+**Q：合成报错「模型尚未加载 / 模型加载失败」，或接口返回 503？**
+
+这是**预期行为**：本项目没有任何模拟推理路径，模型不可用时一律如实报错，
+不会返回"听起来像音频但不是人声"的内容。排查步骤：
+
+```bash
+curl -s http://127.0.0.1:8000/api/v1/system/info | python3 -m json.tool
+# 关注 model.state / model.error / model.model_dir
+```
+
+最常见的三种原因：
+
+| 现象 | 原因 | 修复 |
+| --- | --- | --- |
+| `本地模型目录不存在: ...` | 权重没下载 | `bash scripts/setup_cosyvoice.sh` |
+| `无法导入 cosyvoice 包` | 未克隆官方仓库或未装推理依赖 | `bash scripts/setup_cosyvoice.sh` + `bash scripts/install_cosyvoice_deps.sh` |
+| `ModelScope 下载失败` | 网络问题 | 配好镜像或改为本地权重路径 |
+
+界面在 `state=error` 时会显示红色错误条并给出后端返回的具体原因；
+「设置」页也可以手动点「加载模型」重试。
+
+启动日志里出现 `no frontend is avaliable` 或
+`modelscope - ERROR - Authentication token does not exist` 是**非致命**的：
+前者表示文本正则化模型（WeTextProcessing）没能下载，此时数字/符号不会被规范化，
+其余功能不受影响。想启用的话，登录 ModelScope 或配好镜像后重启即可。
+
+### 如何确认拿到的是人声
+
+真实模型与"模拟音调"在语谱图上的差别非常直观 —— 人声有谐波堆叠与共振峰走向，
+音调只是一条水平亮线：
+
+![人声与单频音调对比](docs/voice-vs-tone-spectrogram.png)
+
+定量判据：真实语音的显著谱峰通常在 **1000 个以上**，而单一音调只有十几个。
+把生成的 wav 路径传给下面这段脚本即可判断：
+
+```bash
+cd backend && .venv/bin/python check_audio.py data/outputs/xxx.wav
+```
+
+---
+
+## 依赖安装排错（macOS / 无 GPU）
+
+直接执行 `pip install -r CosyVoice/requirements.txt` 在 macOS 上几乎一定会失败，
+本项目提供了平台自适应的替代方案：
+
+```bash
+bash scripts/install_cosyvoice_deps.sh     # 等价于：make deps
+```
+
+它做了三件事，对应三个典型报错：
+
+| 报错 | 原因 | 处理方式 |
+| --- | --- | --- |
+| `Failed to build 'openai-whisper'`<br>`ModuleNotFoundError: No module named 'pkg_resources'` | setuptools ≥ 81 移除了 `pkg_resources`，而 whisper 的 `setup.py` 仍依赖它；whisper 只提供 sdist，必须现场构建 | 用 `--build-constraint`（pip ≥ 25.1）把**构建隔离环境**里的 setuptools 约束到 `<81`；旧版 pip 则回退到 `--no-build-isolation` |
+| `No matching distribution found for torch==2.3.1` | PyTorch 从 2.3 起不再发布 macOS **x86_64（Intel）** 轮子，2.2.2 是最后一个可用版本 | `backend/requirements-cosyvoice.txt` 里按 `sys_platform` + `platform_machine` 自动选版本 |
+| `pyworld` / `deepspeed` 编译失败 | 二者只在训练与数据预处理链路中使用，推理时不会被 import，且只有源码包 | 已从推理依赖中移除，需要训练时再单独安装官方全量依赖 |
+
+> 注意：`PIP_CONSTRAINT` 环境变量对 PEP 517 **构建隔离环境**不生效，必须用 pip 的
+> `--build-constraint` 选项（或关闭构建隔离），这是很多人踩过的坑。
+
+### 依赖裁剪的判定方式
+
+`backend/requirements-cosyvoice.txt` 并不等同于官方 `CosyVoice/requirements.txt`，
+裁剪时**不能凭"看起来像训练依赖"就删**。判断依据是：用 AST 扫描
+`CosyVoice/cosyvoice` 与 `CosyVoice/third_party/Matcha-TTS` 的全部 import，
+再逐条确认是否落在推理链路上。踩过的坑：
+
+| 包 | 看起来像 | 实际 |
+| --- | --- | --- |
+| `conformer` / `diffusers` | 训练用 | `third_party/Matcha-TTS/matcha/models/components/decoder.py` 顶层 import，**推理必需** |
+| `rich` / `lightning` / `gdown` / `matplotlib` / `wget` | 训练工具链 | `matcha/utils/__init__.py` 连带导入，**推理必需** |
+| `pyarrow` / `pyworld` | 数据处理 | `cosyvoice2.yaml` 含 data_pipeline 段，hyperpyyaml 加载模型时会**急切解析** `dataset/processor.py` 的每个 callable，**推理必需** |
+| `deepspeed` | 训练 | 仅 `bin/train.py`、`utils/train_utils.py`，可安全移除 |
+| `tensorboard` / `grpcio` / `gradio` / `tensorrt-*` | 工具 / 服务 | 不在推理 import 链路，可移除 |
+
+还有个容易忽略的点：**setuptools 必须 <81**。`setuptools>=81` 移除了 `pkg_resources`，
+而 `lightning 2.2.4` 在运行期仍然 import 它（构建 `openai-whisper` 时也需要）。
+所以安装脚本里是 `pip install "setuptools<81"`，而不是 `pip install -U setuptools`。
+
+### 上游 API 差异（容易踩的坑）
+
+`CosyVoice/runtime/python/fastapi/server.py` **已经过时**，不要照抄：
+
+```python
+# ❌ 上游 server.py 的旧写法：先把参考音频读成 tensor
+prompt_speech_16k = load_wav(prompt_wav.file, 16000)
+cosyvoice.inference_zero_shot(tts_text, prompt_text, prompt_speech_16k)
+
+# ✅ 当前版本：直接传文件路径
+cosyvoice.inference_zero_shot(tts_text, prompt_text, './asset/zero_shot_prompt.wav')
+```
+
+原因是当前 `CosyVoiceFrontEnd` 会在 `_extract_speech_feat`(24kHz)、
+`_extract_speech_token`(16kHz)、`_extract_spk_embedding`(16kHz) 里**各自重新读取一次文件**
+并按不同目标采样率重采样，传入 tensor 会抛 `TypeError: Invalid file: tensor(...)`。
+`backend/app/core/cosyvoice_backend.py` 的 `_prompt_path()` 已按新用法实现，
+并有回归测试锁定（`backend/tests/test_backend_contract.py`）。
+
+**性能预期**：macOS 只能走 CPU 推理（Apple Silicon 也一样）。CosyVoice2-0.5B 在
+i7-7700HQ 上 RTF≈100，仅适合功能验证；生产使用建议放在 Linux + CUDA 机器上，
+或使用仓库根目录的 `docker-compose.yml` 以 linux/amd64 容器运行。
+
+
 ---
 
 ## 开发与测试
 
 ```bash
-# 后端测试（Mock 后端，无需 GPU 与权重）
+# 后端测试（HTTP 层使用 tests/stub_backend.py 测试桩，无需 GPU 与权重）
 cd backend && .venv/bin/python -m pytest -q
 
 # 前端类型检查 + 构建

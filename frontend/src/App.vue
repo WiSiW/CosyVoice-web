@@ -7,21 +7,36 @@ import AppSidebar from '@/components/AppSidebar.vue'
 import AppTopbar from '@/components/AppTopbar.vue'
 import ToastHost from '@/components/ToastHost.vue'
 import { useToast } from '@/composables/useToast'
+import { useSettingsStore } from '@/stores/settings'
 import { useSystemStore } from '@/stores/system'
 import { useVoiceStore } from '@/stores/voices'
 
 const system = useSystemStore()
 const voices = useVoiceStore()
+const settings = useSettingsStore()
 const toast = useToast()
 
 onMounted(async () => {
   try {
     await system.refresh()
+    applyFirstRunDefaults()
     await Promise.all([voices.refresh(), voices.loadLanguages()])
   } catch (error) {
     toast.error(`初始化失败：${errorMessage(error)}`)
   }
 })
+
+/**
+ * 首次运行（用户还没保存过任何设置）时按后端算力调整默认值：
+ * CPU 推理下流式合成反而更慢（实测 549s vs 305s），因此默认关闭。
+ * 用户手动改过设置后就不再干预。
+ */
+function applyFirstRunDefaults(): void {
+  const hasSavedSettings = typeof localStorage !== 'undefined' && localStorage.getItem('cosyvoice.settings')
+  if (!hasSavedSettings && system.model?.device === 'cpu') {
+    settings.state.streaming = false
+  }
+}
 </script>
 
 <template>

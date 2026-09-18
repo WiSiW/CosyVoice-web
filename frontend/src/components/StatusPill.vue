@@ -7,10 +7,7 @@ const props = defineProps<{ model: ModelStatus | null; compact?: boolean }>()
 
 const label = computed(() => {
   const state = props.model?.state
-  if (state === 'ready') {
-    if (props.model?.mock) return 'Mock 运行中'
-    return `${props.model?.family ?? '模型'} 就绪`
-  }
+  if (state === 'ready') return `${props.model?.family ?? '模型'} 就绪`
   if (state === 'loading') return '模型加载中'
   if (state === 'error') return '模型异常'
   return '模型未加载'
@@ -18,7 +15,7 @@ const label = computed(() => {
 
 const tone = computed(() => {
   const state = props.model?.state
-  if (state === 'ready') return props.model?.mock ? 'warning' : 'ready'
+  if (state === 'ready') return 'ready'
   if (state === 'loading') return 'loading'
   if (state === 'error') return 'error'
   return 'idle'
