@@ -3,12 +3,18 @@ import { computed } from 'vue'
 
 import type { Voice } from '@/types'
 
-const props = defineProps<{
-  speakers: string[]
-  voices: Voice[]
-  speakerValue: string
-  voiceValue: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    speakers: string[]
+    voices: Voice[]
+    speakerValue: string
+    voiceValue: string
+    allowPresets?: boolean
+  }>(),
+  {
+    allowPresets: true,
+  },
+)
 
 const emit = defineEmits<{
   'update:speakerValue': [value: string]
@@ -16,7 +22,10 @@ const emit = defineEmits<{
 }>()
 
 const selected = computed({
-  get: () => (props.voiceValue ? `voice:${props.voiceValue}` : `spk:${props.speakerValue}`),
+  get: () => {
+    if (props.voiceValue) return `voice:${props.voiceValue}`
+    return props.allowPresets && props.speakerValue ? `spk:${props.speakerValue}` : ''
+  },
   set: (value: string) => {
     if (value.startsWith('voice:')) {
       emit('update:voiceValue', value.slice(6))
@@ -34,8 +43,9 @@ const currentVoice = computed(() => props.voices.find((voice) => voice.id === pr
 <template>
   <div class="picker">
     <select v-model="selected" class="select">
-      <option value="spk:">请选择预训练音色</option>
-      <optgroup v-if="speakers.length" label="模型预训练音色">
+      <option v-if="allowPresets" value="spk:">请选择预训练音色</option>
+      <option v-else value="">使用上传或录制的参考音频</option>
+      <optgroup v-if="allowPresets && speakers.length" label="模型预训练音色">
         <option v-for="speaker in speakers" :key="speaker" :value="`spk:${speaker}`">{{ speaker }}</option>
       </optgroup>
       <optgroup v-if="voices.length" label="自定义音色库">

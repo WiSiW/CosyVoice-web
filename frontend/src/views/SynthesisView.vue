@@ -60,6 +60,10 @@ const maxTextLength = computed(() => system.limits.max_text_length)
 const useStream = computed(
   () => settings.state.streaming && (currentMode.value?.supports_stream ?? false) && form.mode !== 'vc',
 )
+const supportsVoiceLibrary = computed(() =>
+  ['zero_shot', 'cross_lingual', 'instruct2'].includes(form.mode),
+)
+const showVoicePicker = computed(() => needs('speaker') || supportsVoiceLibrary.value)
 
 const voiceLabel = computed(() => {
   if (form.voiceValue) return voices.byId(form.voiceValue)?.name ?? '自定义音色'
@@ -84,7 +88,23 @@ watch(
     const spec = system.modes.find((item) => item.id === mode)
     if (spec && !spec.fields.includes('prompt_audio')) promptAudio.value = null
     if (spec && !spec.fields.includes('source_audio')) sourceAudio.value = null
+    if (mode === 'vc') form.voiceValue = ''
+    if (mode === 'instruct') {
+      form.voiceValue = ''
+      if (!form.speakerValue && system.speakers.length) form.speakerValue = system.speakers[0]
+    }
   },
+)
+
+watch(
+  () => system.modes,
+  (list) => {
+    const current = list.find((item) => item.id === form.mode)
+    if (!current || current.available) return
+    const fallback = list.find((item) => item.available && item.id !== 'vc')
+    if (fallback) form.mode = fallback.id
+  },
+  { immediate: true },
 )
 
 onMounted(() => {
@@ -354,17 +374,21 @@ async function refreshVoices(): Promise<void> {
           </div>
         </template>
 
-        <div v-if="needs('speaker')" class="field">
-          <label>音色选择</label>
+        <div v-if="showVoicePicker" class="field">
+          <label>{{ needs('speaker') ? '音色选择' : '音色库（可选）' }}</label>
           <VoicePicker
             v-model:speaker-value="form.speakerValue"
             v-model:voice-value="form.voiceValue"
-            :speakers="system.speakers"
-            :voices="voices.items"
+            :speakers="needs('speaker') ? system.speakers : []"
+            :voices="form.mode === 'sft' || supportsVoiceLibrary ? voices.items : []"
+            :allow-presets="needs('speaker')"
           />
+          <span v-if="supportsVoiceLibrary" class="sub">
+            选择已保存音色可直接复用；未选择时请上传或录制参考音频。
+          </span>
         </div>
 
-        <template v-if="needs('prompt_text')">
+        <template v-if="needs('prompt_text') && !form.voiceValue">
           <div class="field">
             <label for="prompt-text">参考文本</label>
             <textarea
@@ -392,7 +416,7 @@ async function refreshVoices(): Promise<void> {
           </div>
         </template>
 
-        <div v-if="needs('prompt_audio')" class="field">
+        <div v-if="needs('prompt_audio') && !form.voiceValue" class="field">
           <AudioInput
             v-model="promptAudio"
             :label="form.voiceValue ? '参考音频（已选择音色库音色，可不上传）' : '参考音频'"

@@ -118,6 +118,7 @@ async function submit(): Promise<void> {
       autoRegister: settings.state.autoRegister,
     })
     toast.success(`音色「${voice.name}」已创建`)
+    void system.refresh().catch(() => undefined)
     resetDraft()
     showCreate.value = false
   } catch (error) {
@@ -147,6 +148,7 @@ async function saveEdit(id: string): Promise<void> {
     if (settings.state.autoRegister && editDraft.promptText.trim() && system.ready) {
       await voices.register(id)
     }
+    void system.refresh().catch(() => undefined)
     editingId.value = ''
     toast.success('已保存')
   } catch (error) {
@@ -174,6 +176,7 @@ async function remove(voice: Voice): Promise<void> {
   busyId.value = voice.id
   try {
     await voices.remove(voice.id)
+    void system.refresh().catch(() => undefined)
     toast.success('音色已删除')
   } catch (error) {
     toast.error(errorMessage(error))
