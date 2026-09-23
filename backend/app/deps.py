@@ -10,6 +10,7 @@ from fastapi import Request
 
 from app.config import Settings
 from app.core.model_manager import ModelManager
+from app.services.timbre import TimbreIdentificationService
 from app.services.tts_service import TTSService
 from app.services.voice_store import VoiceStore
 
@@ -28,3 +29,7 @@ def voice_store_dep(request: Request) -> VoiceStore:
 
 def tts_service_dep(request: Request) -> TTSService:
     return request.app.state.tts_service
+
+
+def timbre_service_dep(request: Request) -> TimbreIdentificationService:
+    return request.app.state.timbre_service

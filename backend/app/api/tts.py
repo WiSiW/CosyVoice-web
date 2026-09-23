@@ -81,7 +81,7 @@ def _resolve_runtime_spk(voice_id: str, store: VoiceStore, manager: ModelManager
     if not store.exists(voice_id):
         raise AppError(f"音色不存在: {voice_id}", code="voice_not_found", status_code=404)
     spk_id = runtime_spk_id(voice_id)
-    if manager.is_ready and spk_id not in manager.list_speakers():
+    if manager.is_ready and not manager.has_speaker(spk_id):
         try:
             store.register(voice_id, manager)
         except Exception as exc:
@@ -155,15 +155,23 @@ async def _prepare(
     if not runtime_spk:
         runtime_spk = spk_id if mode in {"sft", "instruct"} else ""
 
+    # 自定义音色不是 SFT 预训练 speaker。若 API 仍以 mode=sft 传入 voice_id，
+    # 自动切换成使用已缓存 prompt 的 zero-shot 推理，避免 missing_speaker/KeyError。
+    effective_mode = "zero_shot" if runtime_spk and mode == "sft" else mode
+    if effective_mode != mode:
+        prompt_for_synth = None
+
     params = service.build_params(
-        mode=mode,
+        mode=effective_mode,
         tts_text=tts_text,
         spk_id=spk_id,
         prompt_text=prompt_text,
         instruct_text=instruct_text,
         prompt_wav_path=prompt_for_synth,
         source_wav_path=str(source_path) if source_path else None,
-        zero_shot_spk_id=runtime_spk if mode in {"zero_shot", "cross_lingual", "instruct2"} else "",
+        zero_shot_spk_id=(
+            runtime_spk if effective_mode in {"zero_shot", "cross_lingual", "instruct2"} else ""
+        ),
         speed=speed,
         stream=stream,
         text_frontend=text_frontend,

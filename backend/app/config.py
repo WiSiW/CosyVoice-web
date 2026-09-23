@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     max_upload_mb: int = 30
     max_prompt_seconds: float = 30.0
     min_prompt_seconds: float = 0.5
+    max_identify_seconds: float = 30.0
+    min_identify_seconds: float = 2.0
+    voice_match_threshold: float = 0.55
     default_speed: float = 1.0
     max_speed: float = 2.0
     min_speed: float = 0.5

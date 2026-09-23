@@ -9,13 +9,14 @@
    ``TypeError: Invalid file: tensor(...)``。
    （上游 ``runtime/python/fastapi/server.py`` 仍是旧写法，不能照抄。）
 
-2. 没有内置预训练音色的模型（CosyVoice2 / CosyVoice3）必须把
-   ``sft`` 模式标记为不可用，否则 ``frontend_sft`` 会 KeyError。
+2. 没有内置预训练音色、同时音色库也为空的模型（CosyVoice2 / CosyVoice3）
+   必须把 ``sft`` 模式标记为不可用，否则 ``frontend_sft`` 会 KeyError。
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -26,8 +27,15 @@ from app.core.types import SynthParams
 from app.services.modes import mode_specs_payload
 
 
-def _modes(family, speakers):
-    return {item["id"]: item for item in mode_specs_payload(family, speakers=speakers)}
+def _modes(family, speakers, custom_voice_count=0):
+    return {
+        item["id"]: item
+        for item in mode_specs_payload(
+            family,
+            speakers=speakers,
+            custom_voice_count=custom_voice_count,
+        )
+    }
 
 
 # --------------------------------------------------- prompt_wav 必须是路径
@@ -68,10 +76,31 @@ def test_sft_available_when_preset_speakers_exist():
     assert modes["sft"]["available"] is True
 
 
+def test_sft_available_when_voice_library_has_custom_voice():
+    modes = _modes("CosyVoice2", speakers=[], custom_voice_count=1)
+    assert modes["sft"]["available"] is True
+    assert "自定义音色" in modes["sft"]["note"]
+
+
 def test_sft_not_disabled_while_model_is_unloaded():
     """音色列表未知时不应误禁用（模型还没加载）。"""
     modes = _modes(None, speakers=None)
     assert modes["sft"]["available"] is True
+
+
+def test_list_speakers_only_returns_sft_compatible_builtins():
+    model = SimpleNamespace(
+        frontend=SimpleNamespace(
+            spk2info={
+                "中文女": {"embedding": object()},
+                "vo_custom": {"llm_embedding": object(), "flow_embedding": object()},
+            }
+        )
+    )
+    backend = _backend_with(model)
+
+    assert backend.list_speakers() == ["中文女"]
+    assert backend.has_speaker("vo_custom") is True
 
 
 def test_v1_only_modes_follow_model_family():

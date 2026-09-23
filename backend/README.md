@@ -13,8 +13,7 @@ bash ../scripts/install_cosyvoice_deps.sh          # 等价于在根目录执行
 # 或者手动分两步
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt          # 仅 Web 服务层
-.venv/bin/pip install --build-constraint build-constraints.txt \
-    -r requirements-cosyvoice.txt                  # CosyVoice 推理依赖
+.venv/bin/pip install --build-constraint build-constraints.txt -r requirements-cosyvoice.txt                  # CosyVoice 推理依赖
 
 cp .env.example .env
 .venv/bin/uvicorn app.main:app --port 8000

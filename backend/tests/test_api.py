@@ -25,6 +25,26 @@ def test_system_info_reports_model_state(client):
     assert {mode["id"] for mode in modes} >= {"sft", "zero_shot", "cross_lingual", "instruct2"}
 
 
+def test_sft_mode_available_when_voice_library_has_custom_voice(client):
+    assert client.post("/api/v1/system/load").status_code == 200
+    manager = client.app.state.model_manager
+    manager._backend._speakers.clear()
+
+    modes = {item["id"]: item for item in client.get("/api/v1/system/modes").json()}
+    assert modes["sft"]["available"] is False
+
+    files = {"audio": ("prompt.wav", make_wav_bytes(3.0), "audio/wav")}
+    client.post(
+        "/api/v1/voices",
+        data={"name": "音色库音色", "prompt_text": "参考文本"},
+        files=files,
+    )
+
+    modes = {item["id"]: item for item in client.get("/api/v1/system/modes").json()}
+    assert modes["sft"]["available"] is True
+    assert "自定义音色" in modes["sft"]["note"]
+
+
 def test_create_and_list_voice(client):
     files = {"audio": ("prompt.wav", make_wav_bytes(3.0), "audio/wav")}
     data = {"name": "测试音色", "prompt_text": "你好世界", "language": "中文"}
@@ -202,6 +222,26 @@ def test_save_voice_is_skipped_when_using_existing_voice(client):
     assert resp.status_code == 200
     assert resp.headers.get("x-voice-id") == ""
     assert len(client.get("/api/v1/voices").json()) == 1
+
+
+def test_sft_with_registered_voice_uses_cached_voice(client):
+    """API 以 sft 传入音色库 id 时，不应再报 missing_speaker。"""
+    files = {"audio": ("prompt.wav", make_wav_bytes(3.0), "audio/wav")}
+    created = client.post(
+        "/api/v1/voices",
+        data={"name": "音色库音色", "prompt_text": "参考文本", "auto_register": "true"},
+        files=files,
+    ).json()
+
+    resp = client.post(
+        "/api/v1/tts/synthesize",
+        data={
+            "mode": "sft",
+            "tts_text": "测试使用已注册音色",
+            "voice_id": created["id"],
+        },
+    )
+    assert resp.status_code == 200, resp.text
 
 
 def test_stream_endpoint_also_returns_saved_voice(client):

@@ -45,8 +45,14 @@ def system_info(
 
 
 @router.get("/system/modes", response_model=list[ModeOut], summary="可用合成模式")
-def list_modes(manager: ModelManager = Depends(manager_dep)) -> list[ModeOut]:
-    payload = manager.modes_payload()
+def list_modes(
+    manager: ModelManager = Depends(manager_dep),
+    store: VoiceStore = Depends(voice_store_dep),
+) -> list[ModeOut]:
+    custom_voice_count = sum(
+        1 for voice in store.list() if str(voice.get("prompt_text") or "").strip()
+    )
+    payload = manager.modes_payload(custom_voice_count=custom_voice_count)
     return [ModeOut(**item) for item in payload]
 
 

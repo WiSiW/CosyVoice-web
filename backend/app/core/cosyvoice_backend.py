@@ -161,11 +161,29 @@ class CosyVoiceBackend:
 
     # ------------------------------------------------------------ 能力查询
     def list_speakers(self) -> list[str]:
+        """只返回可用于 ``inference_sft`` 的内置 speaker。
+
+        音色库中的 zero-shot 音色也会写入上游 ``spk2info``，但它们包含的是
+        ``llm_embedding`` / ``flow_embedding`` 与 prompt speech token，并没有
+        SFT 分支所需的 ``embedding`` 字段，不能冒充预训练音色。
+        """
         try:
-            return list(self._model.list_available_spks())
+            spk2info = getattr(self._model.frontend, "spk2info", {})
+            if not isinstance(spk2info, dict):
+                return []
+            return [
+                spk_id
+                for spk_id, info in spk2info.items()
+                if isinstance(info, dict) and "embedding" in info
+            ]
         except Exception as exc:  # pragma: no cover - 取决于模型内容
             logger.warning("读取预训练音色失败: %s", exc)
             return []
+
+    def has_speaker(self, spk_id: str) -> bool:
+        """检查运行时是否已注册指定音色（含音色库 zero-shot 音色）。"""
+        spk2info = getattr(self._model.frontend, "spk2info", None)
+        return isinstance(spk2info, dict) and spk_id in spk2info
 
     def supports(self, mode: str) -> bool:
         spec = MODE_SPECS.get(mode)
@@ -182,6 +200,27 @@ class CosyVoiceBackend:
     # ------------------------------------------------------------ 音色注册
     def add_zero_shot_speaker(self, prompt_text: str, prompt_wav_path: str, spk_id: str) -> bool:
         return bool(self._model.add_zero_shot_spk(prompt_text, self._prompt_path(prompt_wav_path), spk_id))
+
+    def extract_speaker_embedding(self, prompt_wav_path: str) -> np.ndarray:
+        """从任意音频提取 campplus 说话人向量。"""
+        embedding = self._model.frontend._extract_spk_embedding(
+            self._prompt_path(prompt_wav_path)
+        )
+        return np.asarray(self._to_numpy(embedding), dtype=np.float32).reshape(-1)
+
+    def list_speaker_embeddings(self) -> dict[str, np.ndarray]:
+        """返回模型内置、且包含 speaker embedding 的音色。"""
+        embeddings: dict[str, np.ndarray] = {}
+        spk2info = getattr(self._model.frontend, "spk2info", {})
+        if not isinstance(spk2info, dict):
+            return embeddings
+        for spk_id, info in spk2info.items():
+            if not isinstance(info, dict) or "embedding" not in info:
+                continue
+            embeddings[str(spk_id)] = np.asarray(
+                self._to_numpy(info["embedding"]), dtype=np.float32
+            ).reshape(-1)
+        return embeddings
 
     def remove_speaker(self, spk_id: str) -> None:
         spk2info = getattr(self._model.frontend, "spk2info", None)

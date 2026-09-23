@@ -9,11 +9,19 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COSYVOICE_DIR="${COSYVOICE_DIR:-${PROJECT_ROOT}/CosyVoice}"
+VENV_DIR="${VENV_DIR:-${PROJECT_ROOT}/backend/.venv}"
 MODEL_ID="${MODEL_ID:-iic/CosyVoice2-0.5B}"
 PYTHON="${PYTHON:-python3}"
+PROJECT_ROOT_DISPLAY="${PROJECT_ROOT}"
+COSYVOICE_DIR_DISPLAY="${COSYVOICE_DIR}"
 
-echo "==> 项目根目录 : ${PROJECT_ROOT}"
-echo "==> CosyVoice   : ${COSYVOICE_DIR}"
+if command -v cygpath >/dev/null 2>&1; then
+  PROJECT_ROOT_DISPLAY="$(cygpath -m "${PROJECT_ROOT}")"
+  COSYVOICE_DIR_DISPLAY="$(cygpath -m "${COSYVOICE_DIR}")"
+fi
+
+echo "==> 项目根目录 : ${PROJECT_ROOT_DISPLAY}"
+echo "==> CosyVoice   : ${COSYVOICE_DIR_DISPLAY}"
 echo "==> 目标模型    : ${MODEL_ID}"
 
 if [[ -d "${COSYVOICE_DIR}/.git" ]]; then
@@ -36,10 +44,33 @@ bash "${PROJECT_ROOT}/scripts/install_cosyvoice_deps.sh"
 
 echo "==> 下载模型权重: ${MODEL_ID}"
 TARGET_DIR="${COSYVOICE_DIR}/pretrained_models/$(basename "${MODEL_ID}")"
-"${PYTHON}" - <<PY
+TARGET_DIR_DISPLAY="${TARGET_DIR}"
+TARGET_DIR_PY="${TARGET_DIR}"
+
+if command -v cygpath >/dev/null 2>&1; then
+  TARGET_DIR_DISPLAY="$(cygpath -m "${TARGET_DIR}")"
+  TARGET_DIR_PY="${TARGET_DIR_DISPLAY}"
+fi
+
+if [[ -x "${VENV_DIR}/bin/python" ]]; then
+  MODEL_PYTHON="${VENV_DIR}/bin/python"
+elif [[ -x "${VENV_DIR}/Scripts/python.exe" ]]; then
+  MODEL_PYTHON="${VENV_DIR}/Scripts/python.exe"
+else
+  echo "[错误] 未找到虚拟环境 Python: ${VENV_DIR}" >&2
+  exit 1
+fi
+
+MODEL_ID="${MODEL_ID}" TARGET_DIR_PY="${TARGET_DIR_PY}" "${MODEL_PYTHON}" - <<'PY'
+import os
 from pathlib import Path
+
 from modelscope import snapshot_download
-path = Path(snapshot_download("${MODEL_ID}", local_dir="${TARGET_DIR}"))
+
+model_id = os.environ["MODEL_ID"]
+local_dir = os.environ["TARGET_DIR_PY"]
+
+path = Path(snapshot_download(model_id, local_dir=local_dir))
 print("模型已下载到:", path)
 
 yaml_files = list(path.glob("cosyvoice*.yaml"))
@@ -56,8 +87,8 @@ cat <<MSG
 ============================================================
 完成。请在 backend/.env 中配置:
 
-  CV_COSYVOICE_REPO=${COSYVOICE_DIR}
-  CV_MODEL_DIR=${TARGET_DIR}
+  CV_COSYVOICE_REPO=${COSYVOICE_DIR_DISPLAY}
+  CV_MODEL_DIR=${TARGET_DIR_DISPLAY}
 
 然后启动后端:
   make api

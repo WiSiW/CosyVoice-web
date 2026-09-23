@@ -21,6 +21,7 @@ from app.config import Settings, get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging_config import setup_logging
 from app.core.model_manager import ModelManager
+from app.services.timbre import TimbreIdentificationService
 from app.services.tts_service import TTSService
 from app.services.voice_store import VoiceStore
 
@@ -33,6 +34,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     manager = ModelManager(settings)
     store = VoiceStore(settings)
     service = TTSService(settings, manager)
+    timbre_service = TimbreIdentificationService(settings, manager, store)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
@@ -66,6 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.model_manager = manager
     application.state.voice_store = store
     application.state.tts_service = service
+    application.state.timbre_service = timbre_service
 
     application.add_middleware(
         CORSMiddleware,

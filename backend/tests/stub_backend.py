@@ -11,7 +11,9 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Iterator
+from pathlib import Path
 
 import numpy as np
 
@@ -38,6 +40,9 @@ class StubBackend:
     def list_speakers(self) -> list[str]:
         return [*self._speakers, *sorted(self._registered)]
 
+    def has_speaker(self, spk_id: str) -> bool:
+        return spk_id in self._speakers or spk_id in self._registered
+
     def supports(self, mode: str) -> bool:
         if mode not in MODE_SPECS:
             return False
@@ -49,6 +54,16 @@ class StubBackend:
     def add_zero_shot_speaker(self, prompt_text: str, prompt_wav_path: str, spk_id: str) -> bool:
         self._registered[spk_id] = prompt_wav_path
         return True
+
+    def extract_speaker_embedding(self, prompt_wav_path: str) -> np.ndarray:
+        payload = Path(prompt_wav_path).read_bytes()
+        digest = hashlib.sha256(payload).digest()
+        seed = int.from_bytes(digest[:8], byteorder="little", signed=False)
+        vector = np.random.default_rng(seed).standard_normal(192, dtype=np.float32)
+        return vector / np.linalg.norm(vector)
+
+    def list_speaker_embeddings(self) -> dict[str, np.ndarray]:
+        return {}
 
     def remove_speaker(self, spk_id: str) -> None:
         self._registered.pop(spk_id, None)

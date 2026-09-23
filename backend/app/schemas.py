@@ -109,5 +109,44 @@ class AudioItemOut(ApiModel):
     filename: str
 
 
+class TimbreStatusOut(ApiModel):
+    ready: bool
+    model_state: str
+    voice_count: int
+    min_seconds: float
+    max_seconds: float
+    match_threshold: float
+
+
+class TimbreFeaturesOut(ApiModel):
+    pitch_hz: float | None = None
+    pitch_low_hz: float | None = None
+    pitch_high_hz: float | None = None
+    voiced_ratio: float
+    spectral_centroid_hz: float
+    rms_db: float
+    label: str
+
+
+class TimbreMatchOut(ApiModel):
+    voice_id: str
+    name: str
+    kind: str
+    score: float
+    similarity: float
+    language: str = ""
+    registered: bool = False
+
+
+class TimbreIdentificationOut(ApiModel):
+    matched: bool
+    best_match: TimbreMatchOut | None = None
+    matches: list[TimbreMatchOut]
+    features: TimbreFeaturesOut
+    threshold: float
+    note: str = ""
+    disclaimer: str
+
+
 class ErrorOut(ApiModel):
     error: dict[str, Any]

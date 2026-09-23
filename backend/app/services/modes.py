@@ -75,8 +75,14 @@ NO_PRESET_SPEAKER_NOTE = (
     "或换成 iic/CosyVoice-300M-SFT 模型。"
 )
 
+LIBRARY_VOICE_NOTE = "当前模型没有内置预训练音色，可使用音色库中的自定义音色。"
 
-def mode_specs_payload(family: str | None = None, speakers: list[str] | None = None) -> list[dict]:
+
+def mode_specs_payload(
+    family: str | None = None,
+    speakers: list[str] | None = None,
+    custom_voice_count: int = 0,
+) -> list[dict]:
     """返回给前端的模式列表，附带当前模型下的可用性。
 
     ``speakers`` 为 ``None`` 表示"模型尚未加载、音色列表未知"，
@@ -87,9 +93,14 @@ def mode_specs_payload(family: str | None = None, speakers: list[str] | None = N
         available = spec.required_family is None or spec.required_family == family
         note = spec.note
 
-        if spec.id == "sft" and speakers is not None and not speakers:
-            available = False
-            note = NO_PRESET_SPEAKER_NOTE
+        if spec.id == "sft" and speakers is not None:
+            has_preset = bool(speakers)
+            has_custom = custom_voice_count > 0
+            if not has_preset and not has_custom:
+                available = False
+                note = NO_PRESET_SPEAKER_NOTE
+            elif not has_preset:
+                note = LIBRARY_VOICE_NOTE
 
         payload.append(
             {

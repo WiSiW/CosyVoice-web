@@ -98,13 +98,14 @@ class ModelManager:
             "inference_queue": self._inference_waiting,
         }
 
-    def modes_payload(self) -> list[dict]:
+    def modes_payload(self, *, custom_voice_count: int = 0) -> list[dict]:
         if not self.is_ready:
             # 模型未加载：音色列表未知，不做可用性推断
             return mode_specs_payload(None, speakers=None)
         return mode_specs_payload(
             getattr(self._backend, "family", None),
             speakers=self.list_speakers(),
+            custom_voice_count=custom_voice_count,
         )
 
     # ------------------------------------------------------------ 加载控制
@@ -204,6 +205,15 @@ class ModelManager:
             logger.warning("获取预训练音色失败: %s", exc)
             return []
 
+    def has_speaker(self, spk_id: str) -> bool:
+        if not self.is_ready:
+            return False
+        try:
+            return bool(self._backend.has_speaker(spk_id))
+        except Exception as exc:
+            logger.warning("检查音色失败 %s: %s", spk_id, exc)
+            return False
+
     def supports(self, mode: str) -> bool:
         if not self.is_ready:
             return True
@@ -217,6 +227,16 @@ class ModelManager:
     def add_zero_shot_speaker(self, prompt_text: str, prompt_wav_path: str, spk_id: str) -> bool:
         backend = self.ensure_ready()
         return bool(backend.add_zero_shot_speaker(prompt_text, prompt_wav_path, spk_id))
+
+    def extract_speaker_embedding(self, prompt_wav_path: str):
+        backend = self.ensure_ready()
+        with self.inference_guard():
+            return backend.extract_speaker_embedding(prompt_wav_path)
+
+    def list_speaker_embeddings(self) -> dict[str, Any]:
+        if not self.is_ready:
+            return {}
+        return dict(self._backend.list_speaker_embeddings())
 
     def remove_speaker(self, spk_id: str) -> None:
         if not self.is_ready:
