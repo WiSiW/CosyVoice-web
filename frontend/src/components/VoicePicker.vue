@@ -39,8 +39,15 @@ const currentVoice = computed(() => props.voices.find((voice) => voice.id === pr
         <option v-for="speaker in speakers" :key="speaker" :value="`spk:${speaker}`">{{ speaker }}</option>
       </optgroup>
       <optgroup v-if="voices.length" label="自定义音色库">
-        <option v-for="voice in voices" :key="voice.id" :value="`voice:${voice.id}`">
-          {{ voice.name }}（{{ voice.language }} · {{ voice.audio.duration.toFixed(1) }}s）
+        <option
+          v-for="voice in voices"
+          :key="voice.id"
+          :value="`voice:${voice.id}`"
+          :disabled="!voice.prompt_text"
+        >
+          {{ voice.name }}（{{ voice.language }} · {{ voice.audio.duration.toFixed(1) }}s）{{
+            voice.prompt_text ? '' : ' · 缺参考文本，不可用'
+          }}
         </option>
       </optgroup>
     </select>
@@ -50,7 +57,10 @@ const currentVoice = computed(() => props.voices.find((voice) => voice.id === pr
         参考文本：{{ currentVoice.prompt_text }}
       </template>
       <template v-else>
-        <span class="warn">该音色缺少参考文本，仅可用于跨语种复刻模式。</span>
+        <span class="warn">
+          该音色缺少参考文本，<strong>无法用于合成</strong>（注册进推理运行时要求提供参考文本）。
+          请到「音色库」补充后再使用。
+        </span>
       </template>
     </p>
   </div>

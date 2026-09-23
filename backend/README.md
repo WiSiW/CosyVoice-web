@@ -59,7 +59,7 @@ python -m app.main --repo /path/to/CosyVoice --model-dir iic/CosyVoice2-0.5B
 | 层 | 位置 | 职责 |
 | --- | --- | --- |
 | 路由层 | `app/api/` | 参数解析、依赖注入、HTTP 语义（状态码/响应头/流式） |
-| 服务层 | `app/services/` | 业务校验、模式分发、结果落盘、音色库管理 |
+| 服务层 | `app/services/` | 业务校验、模式分发、结果落盘、音色库管理、预置朗读稿（`voice_presets.py`） |
 | 核心层 | `app/core/` | 模型生命周期、CosyVoice 封装、异常定义 |
 | 工具层 | `app/utils/` | WAV 读写、音频校验（仅依赖标准库 + numpy + soundfile） |
 

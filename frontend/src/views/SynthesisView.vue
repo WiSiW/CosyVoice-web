@@ -37,6 +37,9 @@ const form = reactive({
 
 const promptAudio = ref<PreparedAudio | null>(null)
 const sourceAudio = ref<PreparedAudio | null>(null)
+// 「3s 极速复刻」上传新参考音频时，可同时把音色存进音色库
+const saveVoice = ref(true)
+const voiceName = ref('')
 const formError = ref('')
 const busy = ref(false)
 const lastResult = ref<GenerationItem | null>(null)
@@ -109,6 +112,13 @@ function validate(): boolean {
     formError.value = '请选择预训练音色或自定义音色'
     return false
   }
+  if (form.voiceValue) {
+    const picked = voices.byId(form.voiceValue)
+    if (picked && !picked.prompt_text) {
+      formError.value = `音色「${picked.name}」缺少参考文本，无法注册进推理运行时，请先到「音色库」补充`
+      return false
+    }
+  }
   if (needs('prompt_text') && !form.voiceValue && !form.promptText.trim()) {
     formError.value = '请输入参考文本（需与参考音频内容一致）'
     return false
@@ -129,6 +139,18 @@ function validate(): boolean {
   return true
 }
 
+watch(promptAudio, (audio) => {
+  if (!audio) {
+    voiceName.value = ''
+    return
+  }
+  if (voiceName.value.trim()) return
+  const base = audio.file.name.replace(/\.[^.]+$/, '')
+  voiceName.value = /^recording$/i.test(base)
+    ? `复刻音色 ${new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).replace(/[/:]/g, '')}`
+    : base
+})
+
 function buildPayload(): SynthesisPayload {
   return {
     mode: form.mode,
@@ -140,6 +162,8 @@ function buildPayload(): SynthesisPayload {
     speed: form.speed,
     seed: form.seed,
     textFrontend: form.textFrontend,
+    saveVoice: saveVoice.value && !form.voiceValue && Boolean(promptAudio.value),
+    voiceName: voiceName.value.trim(),
     promptAudio: promptAudio.value?.file ?? null,
     promptFilename: promptAudio.value?.file.name,
     sourceAudio: sourceAudio.value?.file ?? null,
@@ -176,7 +200,7 @@ async function generate(): Promise<void> {
     busy.value = true
     if (useStream.value) {
       stream.reset()
-      const { audioId } = await stream.start(payload)
+      const { audioId, voiceId } = await stream.start(payload)
       const elapsed = (performance.now() - startedAt) / 1000
       const blob = stream.toWavBlob()
       const url = blob ? URL.createObjectURL(blob) : ''
@@ -196,6 +220,7 @@ async function generate(): Promise<void> {
         rtf: duration > 0 ? Number((elapsed / duration).toFixed(2)) : undefined,
       })
       toast.success(`合成完成（流式，${formatDuration(duration)}）`)
+      await handleSavedVoice(voiceId)
     } else {
       const result = await synthesize(payload)
       const elapsed = (performance.now() - startedAt) / 1000
@@ -215,6 +240,7 @@ async function generate(): Promise<void> {
         rtf: result.duration > 0 ? Number((elapsed / result.duration).toFixed(2)) : undefined,
       })
       toast.success(`合成完成（${formatDuration(result.duration)}）`)
+      await handleSavedVoice(result.voiceId)
     }
     // 首次合成会顺带加载模型，这里刷新一次以同步内置音色与运行状态
     void system.refresh().catch(() => undefined)
@@ -225,6 +251,14 @@ async function generate(): Promise<void> {
   } finally {
     busy.value = false
   }
+}
+
+async function handleSavedVoice(voiceId: string): Promise<void> {
+  if (!voiceId) return
+  promptAudio.value = null
+  await voices.refresh()
+  const saved = voices.byId(voiceId)
+  toast.success(`音色「${saved?.name ?? voiceId}」已保存到音色库，下次可直接选用`)
 }
 
 function stopGenerate(): void {
@@ -367,6 +401,20 @@ async function refreshVoices(): Promise<void> {
           />
         </div>
 
+        <div v-if="needs('prompt_text') && promptAudio && !form.voiceValue" class="field save-voice">
+          <label class="checkbox">
+            <input v-model="saveVoice" type="checkbox" />
+            同时保存到音色库（下次可直接选用，无需重新上传参考音频）
+          </label>
+          <input
+            v-model="voiceName"
+            class="name-input"
+            type="text"
+            :disabled="!saveVoice"
+            placeholder="音色名称（留空自动生成）"
+          />
+        </div>
+
         <div v-if="needs('source_audio')" class="field">
           <AudioInput
             v-model="sourceAudio"
@@ -473,6 +521,20 @@ async function refreshVoices(): Promise<void> {
 </template>
 
 <style scoped>
+.save-voice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+}
+
+.name-input {
+  max-width: 320px;
+}
+
 .alert-detail {
   margin-top: 6px;
   font-size: 12.5px;

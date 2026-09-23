@@ -83,6 +83,19 @@ export interface Voice {
   runtime_spk_id: string | null
 }
 
+/** 各语种的预置朗读稿（参考文本必须与参考音频逐字一致，故做成朗读稿） */
+export interface VoicePreset {
+  language: string
+  text: string
+  target_seconds: number
+  note: string
+}
+
+export interface VoicePresetsResponse {
+  presets: VoicePreset[]
+  fallback_note: string
+}
+
 export interface VoiceUpdatePayload {
   name?: string
   description?: string

@@ -190,6 +190,18 @@ class TTSService:
             except OSError:
                 pass
 
+    def clear_history(self) -> int:
+        """删除全部生成结果，返回删除的文件数。"""
+        deleted = 0
+        for path in self._settings.outputs_dir.glob("*.wav"):
+            try:
+                path.unlink()
+                deleted += 1
+            except OSError:  # pragma: no cover
+                logger.warning("删除历史文件失败: %s", path)
+        logger.info("已清理生成结果 %d 个", deleted)
+        return deleted
+
     def audio_path(self, audio_id: str) -> Path:
         safe = "".join(ch for ch in audio_id if ch.isalnum())
         if not safe or safe != audio_id:

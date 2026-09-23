@@ -106,6 +106,8 @@ async def _prepare(
     prompt_text: str,
     instruct_text: str,
     voice_id: str,
+    voice_name: str,
+    save_voice: bool,
     speed: float,
     seed: int | None,
     text_frontend: bool,
@@ -116,12 +118,40 @@ async def _prepare(
     manager: ModelManager,
     store: VoiceStore,
     service: TTSService,
-) -> tuple[SynthParams, list[Path | None]]:
+) -> tuple[SynthParams, list[Path | None], dict | None]:
     prompt_path = await _store_upload(prompt_wav, settings, "prompt")
     source_path = await _store_upload(source_wav, settings, "source")
     temp_files = [prompt_path, source_path]
 
     runtime_spk = _resolve_runtime_spk(voice_id, store, manager)
+    saved_voice: dict | None = None
+    # 用哪份参考音频做本次合成：默认用临时文件；若同时保存进音色库，则改用已注册的音色，
+    # 避免对同一段音频重复提取特征（省一次 speech_token / mel / campplus 计算）。
+    prompt_for_synth = str(prompt_path) if prompt_path else None
+
+    if (
+        not runtime_spk
+        and save_voice
+        and prompt_path is not None
+        and mode == "zero_shot"
+        and prompt_text.strip()
+    ):
+        saved_voice = store.create(
+            name=voice_name.strip() or f"复刻音色 {datetime.now().strftime('%m%d-%H%M%S')}",
+            audio_bytes=prompt_path.read_bytes(),
+            original_filename=(prompt_wav.filename if prompt_wav and prompt_wav.filename else prompt_path.name),
+            prompt_text=prompt_text,
+            description="由「3s 极速复刻」页面自动保存",
+            language="中文",
+            source="upload",
+        )
+        try:
+            store.register(saved_voice["id"], manager)
+            runtime_spk = runtime_spk_id(saved_voice["id"])
+            prompt_for_synth = None  # 已注册的音色内含全部提示特征
+        except Exception as exc:  # 注册失败不影响本次合成，音色仍已保存
+            logger.warning("音色 %s 已保存但注册失败: %s", saved_voice["id"], exc)
+
     if not runtime_spk:
         runtime_spk = spk_id if mode in {"sft", "instruct"} else ""
 
@@ -131,7 +161,7 @@ async def _prepare(
         spk_id=spk_id,
         prompt_text=prompt_text,
         instruct_text=instruct_text,
-        prompt_wav_path=str(prompt_path) if prompt_path else None,
+        prompt_wav_path=prompt_for_synth,
         source_wav_path=str(source_path) if source_path else None,
         zero_shot_spk_id=runtime_spk if mode in {"zero_shot", "cross_lingual", "instruct2"} else "",
         speed=speed,
@@ -139,7 +169,7 @@ async def _prepare(
         text_frontend=text_frontend,
         seed=seed,
     )
-    return params, temp_files
+    return params, temp_files, saved_voice
 
 
 # ------------------------------------------------------------------ 接口
@@ -151,6 +181,8 @@ async def synthesize(
     prompt_text: str = Form(""),
     instruct_text: str = Form(""),
     voice_id: str = Form("", description="音色库中的自定义音色 id"),
+    save_voice: bool = Form(False, description="同时把本次上传的参考音频保存进音色库"),
+    voice_name: str = Form("", description="保存音色时使用的名称，留空自动生成"),
     speed: float = Form(1.0),
     seed: int | None = Form(None),
     text_frontend: bool = Form(True),
@@ -161,13 +193,15 @@ async def synthesize(
     store: VoiceStore = Depends(voice_store_dep),
     service: TTSService = Depends(tts_service_dep),
 ) -> Response:
-    params, temp_files = await _prepare(
+    params, temp_files, saved_voice = await _prepare(
         mode=mode,
         tts_text=tts_text,
         spk_id=spk_id,
         prompt_text=prompt_text,
         instruct_text=instruct_text,
         voice_id=voice_id,
+        voice_name=voice_name,
+        save_voice=save_voice,
         speed=speed,
         seed=seed,
         text_frontend=text_frontend,
@@ -192,6 +226,7 @@ async def synthesize(
             "X-Sample-Rate": str(result.sample_rate),
             "X-Duration": str(result.duration),
             "X-Audio-Url": result.url or "",
+            "X-Voice-Id": (saved_voice or {}).get("id", ""),
             "Content-Disposition": f'inline; filename="{result.audio_id}.wav"',
         },
     )
@@ -205,6 +240,8 @@ async def synthesize_stream(
     prompt_text: str = Form(""),
     instruct_text: str = Form(""),
     voice_id: str = Form(""),
+    save_voice: bool = Form(False, description="同时把本次上传的参考音频保存进音色库"),
+    voice_name: str = Form("", description="保存音色时使用的名称，留空自动生成"),
     speed: float = Form(1.0),
     seed: int | None = Form(None),
     text_frontend: bool = Form(True),
@@ -215,13 +252,15 @@ async def synthesize_stream(
     store: VoiceStore = Depends(voice_store_dep),
     service: TTSService = Depends(tts_service_dep),
 ) -> StreamingResponse:
-    params, temp_files = await _prepare(
+    params, temp_files, saved_voice = await _prepare(
         mode=mode,
         tts_text=tts_text,
         spk_id=spk_id,
         prompt_text=prompt_text,
         instruct_text=instruct_text,
         voice_id=voice_id,
+        voice_name=voice_name,
+        save_voice=save_voice,
         speed=speed,
         seed=seed,
         text_frontend=text_frontend,
@@ -248,6 +287,7 @@ async def synthesize_stream(
         headers={
             "X-Audio-Id": audio_id,
             "X-Audio-Url": f"/api/v1/tts/audio/{audio_id}",
+            "X-Voice-Id": (saved_voice or {}).get("id", ""),
             "X-Sample-Rate": str(manager.sample_rate),
             "X-Channels": "1",
             "X-Sample-Format": "int16",
@@ -278,6 +318,13 @@ def history(
             )
         )
     return items
+
+
+@router.delete("/history", summary="清空全部生成记录（同时删除服务端音频文件）")
+def clear_history(
+    service: TTSService = Depends(tts_service_dep),
+) -> dict[str, int]:
+    return {"deleted": service.clear_history()}
 
 
 @router.get("/audio/{audio_id}", summary="下载/播放历史音频")

@@ -17,10 +17,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from app.core.cosyvoice_backend import CosyVoiceBackend
 from app.core.errors import UnsupportedModeError
+from app.core.types import SynthParams
 from app.services.modes import mode_specs_payload
 
 
@@ -81,3 +83,83 @@ def test_v1_only_modes_follow_model_family():
     cosyvoice1 = _modes("CosyVoice", speakers=["中文女"])
     assert cosyvoice1["instruct"]["available"] is True
     assert cosyvoice1["vc"]["available"] is True
+
+
+# ------------------------------- 使用"已注册音色"时的参数传递（真实后端路径）
+class _RecordingModel:
+    """记录上游被调用时收到的参数，用于验证参数编组。"""
+
+    sample_rate = 24000
+
+    def __init__(self, speakers=("vo_abc",)):
+        self.calls: dict[str, tuple] = {}
+        self._speakers = list(speakers)
+
+    def list_available_spks(self):
+        return self._speakers
+
+    def _yield(self):
+        return iter([{"tts_speech": np.zeros((1, 2400), dtype=np.float32)}])
+
+    def inference_zero_shot(self, tts_text, prompt_text, prompt_wav, **kwargs):
+        self.calls["zero_shot"] = (tts_text, prompt_text, prompt_wav, kwargs)
+        return self._yield()
+
+    def inference_cross_lingual(self, tts_text, prompt_wav, **kwargs):
+        self.calls["cross_lingual"] = (tts_text, prompt_wav, kwargs)
+        return self._yield()
+
+    def inference_instruct2(self, tts_text, instruct_text, prompt_wav, **kwargs):
+        self.calls["instruct2"] = (tts_text, instruct_text, prompt_wav, kwargs)
+        return self._yield()
+
+
+def _backend_with(model):
+    backend = object.__new__(CosyVoiceBackend)
+    backend._model = model
+    backend.family = "CosyVoice2"
+    backend.sample_rate = 24000
+    backend.model_dir = "/tmp"
+    return backend
+
+
+@pytest.mark.parametrize("mode", ["zero_shot", "cross_lingual", "instruct2"])
+def test_registered_voice_passes_empty_prompt_wav(mode):
+    """用已注册音色时不能再要求参考音频路径，必须传空字符串。
+
+    曾经这里无条件解析路径，导致"从音色库选音色合成"直接报
+    「缺少参考音频」，整条音色库链路不可用。
+    """
+    model = _RecordingModel()
+    backend = _backend_with(model)
+
+    params = SynthParams(
+        mode=mode,
+        tts_text="你好",
+        prompt_text="参考文本",
+        instruct_text="用四川话说",
+        prompt_wav_path=None,          # 没有上传参考音频
+        zero_shot_spk_id="vo_abc",     # 改用音色库里的音色
+    )
+    list(backend.synthesize(params))
+
+    call = model.calls[mode]
+    assert call[-1]["zero_shot_spk_id"] == "vo_abc"
+    # 各模式下 prompt_wav 的位置不同，但都必须是空字符串
+    prompt_wav = call[2] if mode != "cross_lingual" else call[1]
+    assert prompt_wav == "", f"{mode} 应传空字符串，实际收到 {prompt_wav!r}"
+
+
+def test_zero_shot_without_registered_voice_still_requires_prompt(tmp_path):
+    """没有注册音色时，缺少参考音频仍然要报错。"""
+    prompt = tmp_path / "p.wav"
+    prompt.write_bytes(b"RIFF")
+    model = _RecordingModel()
+    backend = _backend_with(model)
+
+    with pytest.raises(UnsupportedModeError):
+        list(backend.synthesize(SynthParams(mode="zero_shot", tts_text="你好", prompt_wav_path=None)))
+
+    # 传了路径则正常透传
+    list(backend.synthesize(SynthParams(mode="zero_shot", tts_text="你好", prompt_wav_path=str(prompt))))
+    assert model.calls["zero_shot"][2] == str(prompt)

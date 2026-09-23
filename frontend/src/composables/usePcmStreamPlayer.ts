@@ -26,6 +26,7 @@ export function usePcmStreamPlayer() {
   let sampleRate = 22050
   let controller: AbortController | null = null
   let audioId = ''
+  let voiceId = ''
 
   function ensureContext(): AudioContext {
     if (!context || context.state === 'closed') {
@@ -84,7 +85,7 @@ export function usePcmStreamPlayer() {
     }
   }
 
-  async function start(payload: SynthesisPayload): Promise<{ audioId: string }> {
+  async function start(payload: SynthesisPayload): Promise<{ audioId: string; voiceId: string }> {
     stop()
     streaming.value = true
     playing.value = false
@@ -99,9 +100,10 @@ export function usePcmStreamPlayer() {
       const result = await synthesizeStream(payload, schedule, controller.signal)
       sampleRate = result.sampleRate
       audioId = result.audioId
-      return { audioId }
+      voiceId = result.voiceId
+      return { audioId, voiceId }
     } catch (err) {
-      if ((err as Error)?.name === 'AbortError') return { audioId: '' }
+      if ((err as Error)?.name === 'AbortError') return { audioId: '', voiceId: '' }
       error.value = errorMessage(err)
       throw err
     } finally {

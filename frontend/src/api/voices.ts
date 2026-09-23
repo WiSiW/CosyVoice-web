@@ -1,4 +1,4 @@
-import type { Voice, VoiceUpdatePayload } from '@/types'
+import type { Voice, VoicePresetsResponse, VoiceUpdatePayload } from '@/types'
 
 import { del, get, patch, post } from './client'
 
@@ -19,6 +19,11 @@ export function fetchVoices(): Promise<Voice[]> {
 
 export function fetchLanguages(): Promise<string[]> {
   return get('/voices/languages')
+}
+
+/** 各语种的预置朗读稿 */
+export function fetchVoicePresets(): Promise<VoicePresetsResponse> {
+  return get('/voices/presets')
 }
 
 export function createVoice(payload: CreateVoicePayload): Promise<Voice> {

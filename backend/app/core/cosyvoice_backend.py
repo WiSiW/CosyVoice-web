@@ -24,6 +24,7 @@ from typing import Any
 import numpy as np
 
 from app.core.errors import UnsupportedModeError
+from app.core.logging_config import silence_known_third_party_noise
 from app.core.types import SynthParams
 from app.services.modes import MODE_SPECS, get_spec
 
@@ -61,6 +62,11 @@ class CosyVoiceBackend:
                 "克隆官方仓库与子模块，并安装其依赖（CosyVoice/requirements.txt）。"
                 f" 原始错误: {exc}"
             ) from exc
+
+        # cosyvoice 的导入会连带 import transformers，而后者会把自己的 handler
+        # 挂到 `transformers` logger 上（propagate=False）。这里再挂一次过滤器，
+        # 否则它的告警会绕过 setup_logging 里配置的 console handler。
+        silence_known_third_party_noise()
 
         model_cls = self._detect_model_class(model_path, CosyVoice, CosyVoice2, CosyVoice3)
 
@@ -211,14 +217,14 @@ class CosyVoiceBackend:
             generator = model.inference_zero_shot(
                 params.tts_text,
                 params.prompt_text,
-                self._prompt_path(params.prompt_wav_path),
+                self._prompt_arg(params),
                 zero_shot_spk_id=params.zero_shot_spk_id,
                 **common,
             )
         elif params.mode == "cross_lingual":
             generator = model.inference_cross_lingual(
                 params.tts_text,
-                self._prompt_path(params.prompt_wav_path),
+                self._prompt_arg(params),
                 zero_shot_spk_id=params.zero_shot_spk_id,
                 **common,
             )
@@ -226,7 +232,7 @@ class CosyVoiceBackend:
             generator = model.inference_instruct2(
                 params.tts_text,
                 params.instruct_text,
-                self._prompt_path(params.prompt_wav_path),
+                self._prompt_arg(params),
                 zero_shot_spk_id=params.zero_shot_spk_id,
                 **common,
             )
@@ -246,6 +252,21 @@ class CosyVoiceBackend:
             yield self._to_numpy(speech)
 
     # ---------------------------------------------------------------- 工具
+    def _prompt_arg(self, params: SynthParams) -> str:
+        """给上游的 ``prompt_wav`` 位置参数。
+
+        使用已注册音色（``zero_shot_spk_id`` 非空）时，音色特征已经缓存在
+        ``spk2info`` 里，上游约定这里传空字符串 —— 例如官方 example.py：
+
+            cosyvoice.inference_zero_shot(text, '', '', zero_shot_spk_id='my_spk')
+
+        如果这里仍然去解析参考音频路径，会因为拿不到路径而抛"缺少参考音频"，
+        导致"从音色库选音色合成"整条链路不可用。
+        """
+        if params.zero_shot_spk_id:
+            return ""
+        return self._prompt_path(params.prompt_wav_path)
+
     @staticmethod
     def _prompt_path(path: str | None) -> str:
         """校验并返回参考音频的**文件路径**。

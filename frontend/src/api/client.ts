@@ -56,8 +56,9 @@ export async function patch<T>(path: string, body?: unknown): Promise<T> {
   return data
 }
 
-export async function del(path: string): Promise<void> {
-  await http.delete(apiUrl(path))
+export async function del<T = void>(path: string): Promise<T> {
+  const { data } = await http.delete<T>(apiUrl(path))
+  return data
 }
 
 /** 从任意异常中提取可展示的消息 */

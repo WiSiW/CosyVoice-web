@@ -12,6 +12,7 @@ from app.core.errors import AppError, InvalidAudioError
 from app.core.model_manager import ModelManager
 from app.deps import manager_dep, settings_dep, voice_store_dep
 from app.schemas import VoiceOut, VoiceUpdateIn
+from app.services.voice_presets import FALLBACK_NOTE, preset_payload
 from app.services.voice_store import LANGUAGES, VoiceStore, runtime_spk_id
 
 router = APIRouter(prefix="/voices", tags=["voices"])
@@ -30,6 +31,17 @@ def _to_out(meta: dict[str, Any], manager: ModelManager) -> VoiceOut:
 @router.get("/languages", response_model=list[str], summary="可选语言列表")
 def languages() -> list[str]:
     return LANGUAGES
+
+
+@router.get("/presets", summary="各语种的预置朗读稿")
+def presets() -> dict:
+    """新建音色时可一键填入的参考文本（按语种）。
+
+    参考文本必须与参考音频逐字一致，因此这里的文本是**朗读稿**：
+    用户照着念即可天然保证一致。声纹本身来自音频（campplus 说话人向量），
+    文本不参与声纹提取。
+    """
+    return {"presets": preset_payload(), "fallback_note": FALLBACK_NOTE}
 
 
 @router.get("", response_model=list[VoiceOut], summary="音色列表")

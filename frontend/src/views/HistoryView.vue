@@ -12,6 +12,7 @@ const toast = useToast()
 
 const keyword = ref('')
 const syncing = ref(false)
+const clearing = ref(false)
 
 const filtered = computed(() => {
   const query = keyword.value.trim().toLowerCase()
@@ -46,10 +47,24 @@ async function remove(id: string): Promise<void> {
   }
 }
 
-function clearLocal(): void {
-  if (!window.confirm('仅清除本地记录列表，服务端音频文件仍会保留，确定继续吗？')) return
-  history.clear()
-  toast.success('本地记录已清空')
+async function clearAll(): Promise<void> {
+  const total = history.items.length
+  if (
+    !window.confirm(
+      `将删除服务端全部生成记录与本地列表（当前 ${total} 条），音频文件会一并删除且不可恢复。确定继续吗？`,
+    )
+  ) {
+    return
+  }
+  clearing.value = true
+  try {
+    const deleted = await history.clearAll()
+    toast.success(deleted ? `已清空 ${deleted} 条记录` : '没有需要清理的记录')
+  } catch (error) {
+    toast.error(errorMessage(error))
+  } finally {
+    clearing.value = false
+  }
 }
 </script>
 
@@ -57,14 +72,20 @@ function clearLocal(): void {
   <div class="page-header">
     <div>
       <h1>生成记录</h1>
-      <p>本地记录保存在浏览器中；服务端音频默认保留最近若干条，可在后端配置 <code class="mono">CV_MAX_HISTORY_FILES</code>。</p>
+      <p>
+        「清空记录」会同时删除服务端音频文件与本地列表；服务端默认只保留最近若干条，
+        可通过后端 <code class="mono">CV_MAX_HISTORY_FILES</code> 调整。
+      </p>
     </div>
     <div class="inline">
       <button class="btn ghost" type="button" :disabled="syncing" @click="sync">
         <span v-if="syncing" class="spinner" />
         同步服务端记录
       </button>
-      <button class="btn ghost" type="button" :disabled="!history.items.length" @click="clearLocal">清空本地</button>
+      <button class="btn danger" type="button" :disabled="clearing || !history.items.length" @click="clearAll">
+        <span v-if="clearing" class="spinner" />
+        清空记录
+      </button>
     </div>
   </div>
 

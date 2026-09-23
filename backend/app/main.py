@@ -74,7 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Audio-Id", "X-Sample-Rate", "X-Duration", "X-Audio-Url"],
+        expose_headers=["X-Audio-Id", "X-Sample-Rate", "X-Duration", "X-Audio-Url", "X-Voice-Id"],
     )
 
     register_exception_handlers(application)

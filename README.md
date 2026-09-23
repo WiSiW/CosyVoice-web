@@ -146,6 +146,7 @@ cosyVoice-test/
 | POST | `/api/v1/system/load` | 加载模型（可 `?force=true` 重载） |
 | POST | `/api/v1/system/unload` | 卸载模型并释放显存 |
 | GET | `/api/v1/voices` | 自定义音色列表 |
+| GET | `/api/v1/voices/presets` | 各语种的预置朗读稿 |
 | POST | `/api/v1/voices` | 新建音色（multipart 上传参考音频） |
 | PATCH | `/api/v1/voices/{id}` | 更新音色信息 |
 | POST | `/api/v1/voices/{id}/register` | 注册到推理运行时 |
@@ -153,6 +154,7 @@ cosyVoice-test/
 | POST | `/api/v1/tts/synthesize` | 一次性合成，返回完整 WAV |
 | POST | `/api/v1/tts/stream` | 流式合成，返回 int16 PCM 分片 |
 | GET | `/api/v1/tts/history` | 最近生成记录 |
+| DELETE | `/api/v1/tts/history` | 清空全部生成记录（同时删除音频文件） |
 | GET | `/api/v1/tts/audio/{id}` | 下载/播放某个生成结果 |
 
 ### 流式协议
@@ -204,12 +206,116 @@ X-Sample-Format: int16
 确认后端已启动，且 `CV_PORT` 与前端配置一致；若前端不是通过 Vite 代理访问，需要在「设置」页把
 API 地址改为 `http://<后端IP>:8000`，并保证该地址在后端 `CV_CORS_ORIGINS` 中。
 
-**Q：为什么「预训练音色」模式一开始没有音色可选？**
-预训练音色列表来自模型内部，模型未加载时为空。建议在 `.env` 中设置 `CV_PRELOAD_MODEL=true`，
-或先点击「设置 → 加载模型」。
+**Q：为什么「预训练音色」是灰色的 / 下拉框里没有音色可选？**
 
-**Q：首次合成非常慢？**
-真实模型加载需要数十秒到数分钟，属于正常现象。加载完成后后续请求会复用同一份模型。
+两种情况：
+
+1. **模型还没加载** —— 预训练音色列表来自模型内部，未加载时为空。设置
+   `CV_PRELOAD_MODEL=true` 或到「设置」页手动加载即可。
+2. **模型本身没有预置音色** —— **CosyVoice2 / CosyVoice3 的权重目录里没有
+   `spk2info.pt`**（上游会把 `frontend.spk2info` 当成空字典），此时调用 SFT 模式会直接
+   `KeyError`。后端会把该模式标记为不可用，界面置灰并给出原因。
+
+想使用「预训练音色」，有三个办法：
+
+* 改用「**3s 极速复刻**」：上传参考音频 + 参考文本，存进「音色库」后即可反复复用（推荐）；
+* 换成 1.0 的 SFT 模型：`MODEL_ID=iic/CosyVoice-300M-SFT bash scripts/setup_cosyvoice.sh`；
+* 直接使用「跨语种复刻」（该模式本身不需要参考文本）。
+
+各模型支持的模式：
+
+| 模型 | 预训练音色 | 3s 极速复刻 | 跨语种复刻 | 自然语言控制 | 音色转换 |
+| --- | :---: | :---: | :---: | :---: | :---: |
+| CosyVoice2-0.5B / Fun-CosyVoice3 | ❌ | ✅ | ✅ | ✅（instruct2） | ❌ |
+| CosyVoice-300M-SFT (1.0) | ✅ | ✅ | ✅ | ✅（instruct） | ✅ |
+
+**Q：在「3s 极速复刻」页面用了新音色，为什么音色库里没有？**
+
+默认会保存。从 v1.0 起，该页面上传参考音频后会出现「**同时保存到音色库**」勾选项
+（默认勾选）与音色名称输入框，提交后音色会自动落库并注册进推理运行时，
+响应头返回 `X-Voice-Id`，界面会提示「已保存到音色库」。
+
+需要满足两个条件，否则不会保存：
+
+* 模式为「3s 极速复刻」（zero-shot）—— 只有该模式同时具备参考音频与参考文本；
+* 没有在下拉框里选择已有音色（选了就复用已有音色，不会重复创建）。
+
+如果取消勾选，就是一次性的试听：上传的音频只作为临时文件使用，合成结束即删除。
+
+也可以直接用接口：
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/tts/synthesize \
+  -F "mode=zero_shot" -F "tts_text=你好。" \
+  -F "prompt_text=希望你以后能够做的比我还好呦。" \
+  -F "save_voice=true" -F "voice_name=我的音色" \
+  -F "prompt_wav=@prompt.wav" -D - -o out.wav
+# 响应头里会带 X-Voice-Id
+```
+
+**Q：新建音色时「参考文本」应该填什么？**
+
+填**与参考音频逐字一致的内容**。系统会按所选语种自动预置一段**朗读稿**，
+推荐的做法是照着它念着录音，这样文本与音频天然一致。
+
+首先要分清两者的分工：
+
+| | 来源 | 说明 |
+| --- | --- | --- |
+| **声纹** | **只由音频计算** | `_extract_spk_embedding()` 把参考音频转成 fbank，再过 campplus 得到 192 维说话人向量，**文本完全不参与** |
+| **参考文本** | 人工填写 | 被 tokenize 后作为 LLM 的文本侧提示，与音频侧的 speech token 做**音‑文对齐** |
+
+所以参考文本不是"用来提供声纹信息的"，它的作用是让模型知道这段音频在说什么。
+**文本与音频内容不一致会直接破坏对齐，相似度明显下降。**
+
+预置稿的选取原则（见 `backend/app/services/voice_presets.py`）：
+
+* 纯文字，不含数字/字母/符号 —— 否则文本正则化会把 `2024` 改写成「二零二四」，与音频对不上；
+* 朗读约 6~9 秒 —— 太短声纹样本不足，太长会让上游对短合成文本给出质量警告；
+* 覆盖较广的声母/韵母/声调，语句自然，便于念出正常语调。
+
+目前已预置 **10 个语种**：中文、英语、日语、韩语、粤语、德语、法语、西班牙语、
+意大利语、俄语。切换语种会自动替换（若你手动改过内容则不会被覆盖），
+也可以点「↻ 填入 xx 预置稿」重新填回。
+
+> ⚠️ **上传已有录音时不要套用预置稿** —— 请填写该录音的真实内容，
+> 否则音‑文对不上，复刻效果会比不填还差。
+
+**Q：音色库里的音色为什么无法使用 / 是灰色的？**
+
+**参考文本是必填项。** 注册音色时会调用上游
+`add_zero_shot_spk(prompt_text, prompt_wav, spk_id)`，必须提供与参考音频一致的文本；
+没有它，音色无法注册进推理运行时，也就无法用于任何合成模式 ——
+**包括跨语种复刻**（通过音色库使用音色，必须先注册）。
+
+前端已按此收紧：
+
+* 「新建音色」把参考文本标为必填，未填写不允许保存；
+* 合成页的音色下拉框会把缺少参考文本的音色**置灰并标注「缺参考文本，不可用」**；
+* 提交合成前会再校验一次。
+
+> 想用「跨语种复刻」又**不想提供参考文本**时，不要走音色库：
+> 直接在合成页的该模式下上传参考音频即可（该模式本身不需要参考文本）。
+
+**Q：合成特别慢？**
+
+两种情况分开看：
+
+* **首次调用慢**：真实模型加载需要数十秒到数分钟（本机实测 CosyVoice2-0.5B 约
+  75~230 秒），属于正常现象，加载完成后会复用同一份模型。
+* **CPU 推理本身就慢**：实测数据（Intel i7-7700HQ，4 核 8 线程，合成 2.84 秒语音）：
+
+  | 方式 | 总耗时 | 首包延迟 |
+  | --- | --- | --- |
+  | 非流式（`stream=false`） | **305 秒**（RTF≈107） | 305 秒 |
+  | 流式（`stream=true`） | 549 秒 | 279 秒 |
+
+  结论：
+
+  * CPU 上**关闭流式反而更快**（约快 1.8 倍）—— 流式是为 GPU 降低首包延迟设计的，
+    在 CPU 上大量小批量前向反而更耗时间。首次运行时前端会据此自动关闭流式。
+  * 每次只合成一两句短文本，长文本请拆分。
+  * 想获得可用体验（RTF < 1），请使用 NVIDIA GPU 机器，或改用云端推理。
 
 **Q：录音上传后合成失败？**
 浏览器录音通常是 `webm/opus`，TorchAudio 无法直接读取。本项目已在前端统一转码为
@@ -241,20 +347,38 @@ curl -s http://127.0.0.1:8000/api/v1/system/info | python3 -m json.tool
 界面在 `state=error` 时会显示红色错误条并给出后端返回的具体原因；
 「设置」页也可以手动点「加载模型」重试。
 
-启动日志里出现 `no frontend is avaliable` 或
-`modelscope - ERROR - Authentication token does not exist` 是**非致命**的：
-前者表示文本正则化模型（WeTextProcessing）没能下载，此时数字/符号不会被规范化，
-其余功能不受影响。想启用的话，登录 ModelScope 或配好镜像后重启即可。
+**Q：启动日志里那些 Warning 要紧吗？**
 
-### 如何确认拿到的是人声
+不要紧，它们都来自第三方库自身的版本提示。以下几种已在后端统一屏蔽
+（见 `backend/app/core/logging_config.py`，每条都注明了理由），**真正的告警不受影响**：
+
+| 日志 | 来源 | 为什么可以忽略 |
+| --- | --- | --- |
+| `Sliding Window Attention is enabled but not implemented for 'sdpa'` | transformers 的 Qwen2 实现 | **误报**：它的判断条件只看 `config.sliding_window`（默认值 32768），漏看了 `use_sliding_window`。而 CosyVoice2 的 `CosyVoice-BlankEN/config.json` 里 `use_sliding_window=False`，真正构造注意力时会尊重该开关，实际走的就是全注意力，掩码没有丢失 |
+| `pkg_resources is deprecated as an API` | lightning 2.2.4 | 上游锁定版本，其内部仍在使用；已通过 `setuptools<81` 满足 |
+| `LoRACompatibleLinear is deprecated` | diffusers 0.29.0 | 上游锁定版本，仅影响它自己的内部实现 |
+| `torch.nn.utils.weight_norm is deprecated` | torch 2.2.2 | 上游 HiFiGAN / flow 代码仍在使用该 API，torch 2.2.2 中功能正常 |
+
+> 注意 `transformers` 会把自己的 handler 挂到 `transformers` logger 上并设置
+> `propagate=False`，所以只给 root handler 加过滤器是**无效**的；本项目会摘掉它的私有
+> handler 并打开传播，让它统一走应用的 console handler（这样格式也一致了）。
+
+**Q：启动日志里出现 `no frontend is avaliable` 或 ModelScope 认证报错？**
+
+这是**非致命**的：表示文本正则化模型（WeTextProcessing）没能下载成功，此时数字/符号
+不会被规范化，其余功能不受影响。登录 ModelScope 或配好镜像后重启即可。
+
+
+**Q：如何确认输出的是人声？**
 
 真实模型与"模拟音调"在语谱图上的差别非常直观 —— 人声有谐波堆叠与共振峰走向，
 音调只是一条水平亮线：
 
 ![人声与单频音调对比](docs/voice-vs-tone-spectrogram.png)
 
-定量判据：真实语音的显著谱峰通常在 **1000 个以上**，而单一音调只有十几个。
-把生成的 wav 路径传给下面这段脚本即可判断：
+定量判据：项目自带诊断脚本，先做帧级 VAD，再统计**有声片段内的谱峰密度** ——
+真实语音约 **950~1200 个/秒**，而单频音调只有几百甚至几十（阈值取 600）。
+注意不要用"整个文件的总谱峰数"，它与时长强相关，短句会被误判。用法：
 
 ```bash
 cd backend && .venv/bin/python check_audio.py data/outputs/xxx.wav

@@ -68,6 +68,12 @@ src/
 * 逐块 `createBuffer` → `AudioBufferSourceNode`，按 `nextStartTime` 顺序排队播放；
 * 同时缓存全部采样，结束后可合并为 WAV 下载，并记录 RTF 供参考。
 
+### 生成记录的"清空"语义
+
+«清空记录» 会先调用 `DELETE /api/v1/tts/history` 删除**服务端**音频文件，再清空本地
+localStorage 列表。不能只清本地 —— 列表是服务端记录的视图，下次 `syncRemote()`
+会把它们重新补回来，那样"清空"看起来就是无效的（这是修复过的一个真实问题）。
+
 ### 主题
 
 `styles/main.css` 中通过 CSS 变量定义深浅色主题，`useSettingsStore.state.theme`
