@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>页面音色识别设置</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>页面音色识别</h1>
+        <p>扩展会把采集到的页面音频发送到 CosyVoice Web 后端，并在本地音色库中进行匹配。</p>
+      </header>
+
+      <form id="settings-form">
+        <label for="api-base-url">后端接口地址</label>
+        <input id="api-base-url" name="apiBaseUrl" type="url" required spellcheck="false" />
+        <p class="help">地址需包含 API 前缀，例如 <code>http://127.0.0.1:8000/api/v1</code>。</p>
+
+        <div class="actions">
+          <button type="submit" class="primary">保存</button>
+          <button id="test-button" type="button">测试连接</button>
+        </div>
+      </form>
+
+      <section id="notice" class="notice" hidden></section>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

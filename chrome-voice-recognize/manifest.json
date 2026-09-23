@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "音色识别",
+  "version": "1.0.0",
+  "description": "采集当前标签页的人声音频，并与本地 CosyVoice 音色库进行声纹相似度匹配。",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "activeTab",
+    "tabCapture",
+    "offscreen",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "识别当前页面音色",
+    "default_popup": "popup/popup.html"
+  },
+  "options_page": "options/options.html"
+}

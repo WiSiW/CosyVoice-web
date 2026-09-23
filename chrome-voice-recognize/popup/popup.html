@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>页面音色识别</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="header">
+        <div class="mark" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <div>
+          <h1>页面音色识别</h1>
+          <p id="backend-status">正在连接本地服务</p>
+        </div>
+        <button id="settings-button" class="icon-button" type="button" title="设置后端地址">设置</button>
+      </header>
+
+      <section class="capture-panel">
+        <div class="section-label">采集时长</div>
+        <div class="segmented" id="duration-control" role="group" aria-label="采集时长">
+          <button type="button" data-duration="5">5 秒</button>
+          <button type="button" data-duration="8" class="active">8 秒</button>
+          <button type="button" data-duration="12">12 秒</button>
+        </div>
+        <p class="hint">播放包含清晰人声的页面音频后再开始；采集期间仍可正常听到页面声音。</p>
+      </section>
+
+      <section id="progress-panel" class="progress-panel" hidden>
+        <div class="progress-copy">
+          <strong id="progress-title">正在采集</strong>
+          <span id="progress-time">0.0 / 8.0 秒</span>
+        </div>
+        <div class="progress-track"><div id="progress-bar"></div></div>
+      </section>
+
+      <section id="error-panel" class="message-panel error" hidden>
+        <strong>识别失败</strong>
+        <p id="error-message"></p>
+      </section>
+
+      <section id="result-panel" class="result-panel" hidden>
+        <div class="result-heading">
+          <span class="section-label">识别结果</span>
+          <span id="result-badge" class="badge">未命中</span>
+        </div>
+        <div class="timbre-summary">
+          <strong id="timbre-label">-</strong>
+          <span id="timbre-detail">-</span>
+        </div>
+        <div>
+          <div class="section-label">音色库候选</div>
+          <div id="matches" class="matches"></div>
+        </div>
+        <p id="disclaimer" class="disclaimer"></p>
+      </section>
+
+      <footer class="actions">
+        <button id="start-button" class="primary" type="button">开始识别</button>
+        <button id="cancel-button" class="secondary" type="button" hidden>停止采集</button>
+      </footer>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

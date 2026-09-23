@@ -34,6 +34,7 @@
 | 音色转换（VC） | 将源音频的音色转换为目标参考音频音色（CosyVoice 1.0） |
 | 流式合成 | 后端逐块输出 PCM，前端 Web Audio 边收边播，首包延迟显著降低 |
 | 音色库 | 参考音频 + 参考文本持久化管理，一键注册进推理运行时 |
+| 页面音色识别 | Chrome MV3 插件采集当前标签页音频，返回声学特征与音色库相似度候选 |
 | 录音与转码 | 浏览器直接录音，自动转码为 16kHz 单声道 WAV 后上传 |
 | 失败即报错 | 模型加载失败会如实返回错误与原因，不存在任何"假音频"兜底路径 |
 
@@ -97,6 +98,17 @@ make build        # 构建前端生产包
 make test         # 运行后端测试
 ```
 
+### Chrome 页面音色识别插件
+
+仓库提供两个无需构建的 Manifest V3 扩展：
+
+- `chrome-extension/`：识别当前页面音频的音色。
+- `chrome-voice-capture/`：采集当前页面音频，导出 WAV 或保存进音色库。
+
+在 `chrome://extensions` 开启开发者模式，选择「加载已解压的扩展程序」，按需加载对应目录。
+详细说明分别见 [`chrome-extension/README.md`](chrome-extension/README.md) 和
+[`chrome-voice-capture/README.md`](chrome-voice-capture/README.md)。
+
 ---
 
 ## 目录结构
@@ -114,6 +126,7 @@ cosyVoice-test/
 │   │   │   └── cosyvoice_backend.py  # 官方 AutoModel 封装
 │   │   ├── services/
 │   │   │   ├── modes.py         # 合成模式元数据（前后端共用契约）
+│   │   │   ├── timbre.py        # 音色特征提取与声纹相似度匹配
 │   │   │   ├── tts_service.py   # 参数校验 / 合成 / 落盘
 │   │   │   └── voice_store.py   # 自定义音色库（文件存储）
 │   │   └── utils/audio.py       # WAV 读写与校验
@@ -128,6 +141,8 @@ cosyVoice-test/
 │       ├── stores/              # Pinia：设置 / 系统状态 / 音色库 / 历史
 │       ├── views/               # 合成 / 音色库 / 记录 / 设置
 │       └── utils/audio.ts       # 浏览器端 WAV 编解码与重采样
+├── chrome-extension/            # 页面音频音色识别插件（Manifest V3）
+├── chrome-voice-capture/        # 页面音频音色采集插件（Manifest V3）
 ├── scripts/setup_cosyvoice.sh   # 克隆官方仓库并下载权重
 └── Makefile
 ```
@@ -156,6 +171,8 @@ cosyVoice-test/
 | GET | `/api/v1/tts/history` | 最近生成记录 |
 | DELETE | `/api/v1/tts/history` | 清空全部生成记录（同时删除音频文件） |
 | GET | `/api/v1/tts/audio/{id}` | 下载/播放某个生成结果 |
+| GET | `/api/v1/timbre/status` | 音色识别服务状态 |
+| POST | `/api/v1/timbre/identify` | 提取音频音色特征并匹配音色库候选 |
 
 ### 流式协议
 
@@ -189,6 +206,9 @@ X-Sample-Format: int16
 | `CV_DATA_DIR` | `../data` | 音色库与生成结果目录 |
 | `CV_MAX_UPLOAD_MB` | `30` | 参考音频大小上限 |
 | `CV_MAX_PROMPT_SECONDS` | `30` | 参考音频时长上限 |
+| `CV_MIN_IDENTIFY_SECONDS` | `2` | 音色识别音频时长下限 |
+| `CV_MAX_IDENTIFY_SECONDS` | `30` | 音色识别音频时长上限 |
+| `CV_VOICE_MATCH_THRESHOLD` | `0.55` | 音色库命中的余弦相似度阈值 |
 
 前端配置位于 `frontend/.env`：
 

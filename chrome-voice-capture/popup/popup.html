@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>页面音色采集器</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="header">
+        <div class="mark" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <div>
+          <h1>页面音色采集器</h1>
+          <p id="backend-status">正在连接本地服务</p>
+        </div>
+        <button id="settings-button" class="icon-button" type="button" title="设置后端地址">设置</button>
+      </header>
+
+      <section class="capture-panel">
+        <div class="section-label">采集时长</div>
+        <div class="segmented" id="duration-control" role="group" aria-label="采集时长">
+          <button type="button" data-duration="5">5 秒</button>
+          <button type="button" data-duration="10" class="active">10 秒</button>
+          <button type="button" data-duration="20">20 秒</button>
+        </div>
+        <p class="hint">播放包含清晰人声的页面音频后开始。采集时会继续播放页面声音。</p>
+      </section>
+
+      <section id="progress-panel" class="progress-panel" hidden>
+        <div class="progress-copy">
+          <strong id="progress-title">正在采集</strong>
+          <span id="progress-time">0.0 / 10.0 秒</span>
+        </div>
+        <div class="progress-track"><div id="progress-bar"></div></div>
+      </section>
+
+      <section id="error-panel" class="message-panel" hidden>
+        <strong id="error-title">采集失败</strong>
+        <p id="error-message"></p>
+      </section>
+
+      <section id="sample-panel" class="sample-panel" hidden>
+        <div class="section-heading">
+          <span class="section-label">采集结果</span>
+          <span id="sample-duration" class="badge">0.0 秒</span>
+        </div>
+        <audio id="audio-preview" controls></audio>
+        <p id="sample-message" class="sample-message"></p>
+        <button id="download-button" class="secondary" type="button">下载 WAV</button>
+
+        <details class="save-details">
+          <summary>保存到音色库</summary>
+          <div class="form-grid">
+            <label>
+              <span>音色名称</span>
+              <input id="voice-name" type="text" maxlength="80" />
+            </label>
+            <label>
+              <span>语言</span>
+              <select id="voice-language"></select>
+            </label>
+            <label class="wide">
+              <span>参考文本</span>
+              <textarea
+                id="prompt-text"
+                rows="3"
+                placeholder="填写音频原文；不注册运行时可以留空"
+              ></textarea>
+            </label>
+            <label class="checkbox wide">
+              <input id="auto-register" type="checkbox" disabled />
+              <span>同时注册到推理运行时（需要参考文本）</span>
+            </label>
+          </div>
+          <button id="save-button" class="primary" type="button">保存到音色库</button>
+        </details>
+      </section>
+
+      <footer class="actions">
+        <button id="start-button" class="primary" type="button">开始采集</button>
+        <button id="cancel-button" class="secondary" type="button" hidden>停止采集</button>
+      </footer>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

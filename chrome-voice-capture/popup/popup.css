@@ -1,0 +1,312 @@
+:root {
+  color-scheme: light;
+  --ink: #17211b;
+  --muted: #647067;
+  --line: #dde4df;
+  --soft: #f4f7f5;
+  --green: #176f45;
+  --green-dark: #105936;
+  --red: #a32b2b;
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 390px;
+  margin: 0;
+  color: var(--ink);
+  background: #fff;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.shell {
+  padding: 16px;
+}
+
+.header {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.header p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: #e8f3ed;
+}
+
+.mark span {
+  width: 3px;
+  border-radius: 2px;
+  background: var(--green);
+}
+
+.mark span:nth-child(1),
+.mark span:nth-child(5) {
+  height: 8px;
+}
+
+.mark span:nth-child(2),
+.mark span:nth-child(4) {
+  height: 15px;
+}
+
+.mark span:nth-child(3) {
+  height: 22px;
+}
+
+.icon-button {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  background: #fff;
+  cursor: pointer;
+}
+
+.capture-panel {
+  padding: 15px 0 12px;
+}
+
+.section-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-top: 8px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
+.segmented button {
+  padding: 7px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.segmented button.active {
+  color: var(--ink);
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(23 33 27 / 12%);
+  font-weight: 700;
+}
+
+.hint {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.progress-panel,
+.sample-panel {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
+.progress-copy,
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.progress-copy span {
+  color: var(--muted);
+}
+
+.progress-track {
+  height: 5px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #d8e1db;
+}
+
+.progress-track div {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+  transition: width 160ms linear;
+}
+
+.message-panel {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #e8c4c4;
+  border-radius: 8px;
+  color: var(--red);
+  background: #fff7f7;
+}
+
+.message-panel p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sample-panel {
+  margin-top: 12px;
+}
+
+audio {
+  width: 100%;
+  height: 36px;
+  margin-top: 10px;
+}
+
+.sample-message {
+  min-height: 16px;
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.badge {
+  padding: 3px 7px;
+  border-radius: 5px;
+  color: var(--green-dark);
+  background: #e2f1e8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+#download-button {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.save-details {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.save-details summary {
+  padding: 11px 0 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+
+.form-grid label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.form-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.form-grid input,
+.form-grid select,
+.form-grid textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  background: #fff;
+  resize: vertical;
+}
+
+.checkbox {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.checkbox input {
+  width: auto;
+}
+
+#save-button {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 15px;
+}
+
+.actions button,
+.sample-panel button {
+  padding: 10px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.primary {
+  border: 1px solid var(--green);
+  color: #fff;
+  background: var(--green);
+}
+
+.primary:hover {
+  background: var(--green-dark);
+}
+
+.primary:disabled,
+.sample-panel button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.secondary {
+  border: 1px solid var(--line);
+  color: var(--ink);
+  background: #fff;
+}
